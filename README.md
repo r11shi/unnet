@@ -176,6 +176,17 @@ unnet resolve <case_key> --note "raised with HDFC, ref 88231"
 unnet recon                       # that case is settled and not re-raised
 ```
 
+### Putting it behind a URL
+
+`Dockerfile` and `render.yaml` deploy the read-only demo to a free tier. The
+image runs `gen` and `recon` at build time, so the container starts with a
+completed run to show, and the model layer replays committed cassettes — no
+secrets, no network egress, no API key.
+
+> Every command in the Dockerfile is verified against a clean clone, but the
+> image has not been built here (no Docker daemon in the environment it was
+> developed in). Expect to run `docker build .` once before trusting it.
+
 ### Running the agents
 
 Defaults to `offline` — cassette replay only, so nothing touches the network
