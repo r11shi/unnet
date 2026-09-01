@@ -150,6 +150,9 @@ class LLMClient:
         if cached is not None:
             self.cassette_hits += 1
             meta = cached.get("meta", {})
+            # Replay the cost the live call actually incurred. Reporting a
+            # cassette run as zero-token would make the AI layer look free.
+            self.tokens += int(meta.get("tokens") or 0)
             return LLMResponse(
                 data=cached.get("data", {}),
                 source="cassette",
@@ -195,6 +198,7 @@ class LLMClient:
                         "backend": backend.name,
                         "task": task,
                         "latency_ms": latency_ms,
+                        "tokens": call_tokens,
                     },
                 )
 

@@ -6,15 +6,15 @@
 
 | Metric | Value |
 | --- | ---: |
-| Records processed | 3,173 |
+| Records processed | 3,174 |
 | Auto-match rate | 100.00% |
 | **False-match rate** | **0.00%** |
 | Links produced | 1,580 |
 | Links wrong | 0 |
-| Value reconciled | ₹1,54,80,906.00 (99.12%) |
-| Value left in exceptions | ₹8,64,096.98 |
-| Wall clock | 963 ms |
-| Throughput | 3,295 records/sec |
+| Value reconciled | ₹1,53,97,905.00 (98.59%) |
+| Value left in exceptions | ₹8,09,392.28 |
+| Wall clock | 760 ms |
+| Throughput | 4,176 records/sec |
 
 ## Links, by tier
 
@@ -28,7 +28,7 @@
 
 | Status | Count |
 | --- | ---: |
-| Open, needs a human | 129 |
+| Open, needs a human | 128 |
 | Closed by exact search | 3 |
 | Closed by model, verifier accepted | 0 |
 | Model proposed, **verifier rejected** | 0 |
@@ -50,7 +50,7 @@
 | `ROUNDING` | 1 | 1 | 1 | 100% | 100% |
 | `SHORT_CREDIT` | 2 | 2 | 2 | 100% | 100% |
 | `TIMING_DIFFERENCE` | 1 | 1 | 1 | 100% | 100% |
-| `UNMATCHED_BANK_CREDIT` | 0 | 1 | 0 | 100% | 0% |
+| `UNMATCHED_BANK_CREDIT` | 1 | 2 | 1 | 100% | 50% |
 
 ## Deliberately hard cases
 
@@ -71,7 +71,7 @@ The `messy` profile blanks `payment_id` and `order_id` on 35% of settlement line
 | --- | ---: | ---: | ---: |
 | Auto-match rate | 100.00% | 65.44% | -34.56% |
 | **False-match rate** | 0.00% | **0.19%** | +0.19% |
-| Exceptions open | 129 | 1,190 | +1,061 |
+| Exceptions open | 128 | 1,191 | +1,063 |
 
 Per tier, with identifiers missing:
 
@@ -91,9 +91,49 @@ The same fixtures, the same seed, one flag different. This is the honest test of
 | --- | ---: | ---: | ---: |
 | Auto-match rate | 100.00% | 100.00% | +0.00% |
 | False-match rate | 0.00% | 0.00% | +0.00% |
-| Exceptions still open | 129 | 129 | +0 |
+| Exceptions still open | 130 | 128 | -2 |
 | Closed by model | 0 | 0 | +0 |
 | Rejected by verifier | 0 | 0 | +0 |
-| Wall clock (ms) | 909 | 963 | +54 |
+| Wall clock (ms) | 725 | 760 | +35 |
 
-Model calls: 2 (0 served from cassette, 0 live). Degraded: False.
+Model calls: 3 (3 served from cassette, 0 live). Degraded: False.
+
+## Agent behaviour
+
+Scored against the held-out truth. The first row is the one that matters: a break left in a queue costs an analyst five minutes, a break closed *wrongly* goes into the books.
+
+| Metric | Value |
+| --- | ---: |
+| **Wrong-resolution rate** | **0.00%** |
+| Exceptions auto-closed | 3 |
+| Escalation correctness | 100% (3/3) |
+| Hypotheses raised for a human | 2 |
+| Proposals the verifier rejected | 0 |
+| Model abstained | 1 |
+| Routing accuracy | 100% (130/130) |
+| Model calls | 3 |
+| Tokens | 5,035 |
+| Tokens per useful outcome | 1,007 |
+
+No exception was closed against the truth. Every break whose explanation is not in the records — a bank's own NEFT charge, for instance — was escalated or raised as an explicitly unverified hypothesis rather than auto-closed.
+
+## The loop: what is outstanding, and who owns it
+
+Every unresolved exception is routed to the party who can actually fix it, and tracked by a key derived from *what the problem is* rather than a row id — so a case settled once does not come back on the next run.
+
+These figures are **identified**, never recovered. Recovery happens when a bank credits the money back, which is not an event this system can observe. They are also never summed: a chargeback already lost and a fee a supplier owes back are not the same rupee.
+
+| How the money is at stake | Cases | Amount |
+| --- | ---: | ---: |
+| At risk — real money, whereabouts unresolved | 72 | ₹5,18,745.00 |
+| Bookkeeping — no money moves, the books are wrong | 32 | ₹1,78,244.97 |
+| Lost unless contested | 10 | ₹1,12,346.00 |
+| Claimable — a counterparty owes it back | 16 | ₹74.01 |
+
+| Routed to | Cases | Amount |
+| --- | ---: | ---: |
+| `razorpay_risk` | 41 | ₹3,64,404.00 |
+| `finance_ops` | 63 | ₹3,32,585.97 |
+| `merchant_ops` | 10 | ₹1,12,346.00 |
+| `razorpay_support` | 14 | ₹56.31 |
+| `bank` | 2 | ₹17.70 |

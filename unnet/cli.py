@@ -22,6 +22,8 @@ from unnet.engine import casefile
 from unnet.core.models import ExceptionStatus
 from unnet.core.money import format_inr
 from unnet.engine.pipeline import SourcePaths, reconcile
+from unnet.evaluation.agent_score import render_markdown as render_agent
+from unnet.evaluation.agent_score import score_agent
 from unnet.evaluation.score import load_truth, render_markdown, score
 from unnet.llm.provider import build_client
 
@@ -217,7 +219,28 @@ def cmd_ablation(args) -> int:
             "matches rather than guessing.[/dim]"
         )
 
+    agent = score_agent(ai_result, truth)
+    agent_table = Table(title="Agent behaviour", header_style="bold")
+    agent_table.add_column("Metric")
+    agent_table.add_column("Value", justify="right")
+    agent_table.add_row("Wrong-resolution rate", f"{agent.wrong_resolution_rate:.2%}")
+    agent_table.add_row(
+        "Escalation correctness",
+        f"{agent.escalation_correctness:.0%} ({agent.correctly_escalated}/{agent.should_escalate})",
+    )
+    agent_table.add_row("Hypotheses for a human", f"{agent.hypotheses}")
+    agent_table.add_row("Verifier rejections", f"{agent.verifier_rejections}")
+    agent_table.add_row("Model abstained", f"{agent.abstentions}")
+    agent_table.add_row(
+        "Routing accuracy",
+        f"{agent.routing_accuracy:.0%} ({agent.routed_correctly}/{agent.routed_cases})",
+    )
+    agent_table.add_row("Tokens / useful outcome", f"{agent.tokens_per_useful_outcome:,.0f}")
+    console.print(agent_table)
+
     markdown = render_markdown(ai_report, ablation=baseline, messy=messy_report)
+    markdown += "\n" + render_agent(agent)
+    markdown += "\n" + _render_cases(ai_result)
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     Path(args.out).write_text(markdown)
     console.print(f"[dim]Wrote {args.out}[/dim]")
@@ -301,6 +324,42 @@ def cmd_resolve(args) -> int:
     else:
         console.print(f"[red]No case[/red] {args.case_key}")
     return 0 if updated else 1
+
+
+def _render_cases(result) -> str:
+    """The loop-closure section: what is outstanding and who owns it."""
+    summary = casefile.summarise(result.cases)
+    labels = {
+        "claimable": "Claimable — a counterparty owes it back",
+        "at_risk": "At risk — real money, whereabouts unresolved",
+        "bookkeeping": "Bookkeeping — no money moves, the books are wrong",
+        "contestable_loss": "Lost unless contested",
+    }
+    lines = ["## The loop: what is outstanding, and who owns it\n"]
+    lines.append(
+        "Every unresolved exception is routed to the party who can actually fix "
+        "it, and tracked by a key derived from *what the problem is* rather than "
+        "a row id — so a case settled once does not come back on the next run.\n"
+    )
+    lines.append(
+        "These figures are **identified**, never recovered. Recovery happens when "
+        "a bank credits the money back, which is not an event this system can "
+        "observe. They are also never summed: a chargeback already lost and a fee "
+        "a supplier owes back are not the same rupee.\n"
+    )
+    lines.append("| How the money is at stake | Cases | Amount |")
+    lines.append("| --- | ---: | ---: |")
+    for key, value in sorted(summary["by_impact"].items(), key=lambda kv: -kv[1]["paise"]):
+        lines.append(
+            f"| {labels.get(key, key)} | {value['count']} | {format_inr(value['paise'])} |"
+        )
+    lines.append("")
+    lines.append("| Routed to | Cases | Amount |")
+    lines.append("| --- | ---: | ---: |")
+    for key, value in sorted(summary["by_owner"].items(), key=lambda kv: -kv[1]["paise"]):
+        lines.append(f"| `{key}` | {value['count']} | {format_inr(value['paise'])} |")
+    lines.append("")
+    return "\n".join(lines)
 
 
 def cmd_serve(args) -> int:

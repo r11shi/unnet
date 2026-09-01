@@ -3,22 +3,19 @@
     "model": "gemini-3.6-flash",
     "backend": "gemini",
     "task": "exception_triage",
-    "latency_ms": 11098
+    "latency_ms": 9774,
+    "tokens": 1778
   },
   "data": {
     "components": [
       {
         "kind": "bank_charge",
         "ref": "inward_neft_charge",
-        "amount_paise": 1000
-      },
-      {
-        "kind": "bank_charge",
-        "ref": "gst_on_neft_charge",
-        "amount_paise": 180
+        "amount_paise": 1180,
+        "note": "Inward NEFT charge of \u20b910 plus 18% GST (\u20b91.80)"
       }
     ],
-    "reasoning": "The bank credit shortfall of 1180 paise (\u20b911.80) corresponds to an inward NEFT processing charge of \u20b910 (1000 paise) plus 18% GST (180 paise).",
+    "reasoning": "The bank credited 1180 paise less than the batch amount of 68891062 paise. This 1180 paise (\u20b911.80) shortfall exactly matches a standard bank inward NEFT charge of \u20b910 plus 18% GST (\u20b91.80).",
     "confidence": 95
   }
 }
