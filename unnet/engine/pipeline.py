@@ -212,6 +212,8 @@ def reconcile(
                     # a human, never counted as a resolution.
                     "hypotheses": triage_agent.hypotheses,
                     "rejected_by_verifier": triage_agent.rejected,
+                    "retries": triage_agent.retries,
+                    "steps": triage_agent.steps,
                 }
                 if triage_agent
                 else {}

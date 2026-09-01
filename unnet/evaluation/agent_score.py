@@ -81,6 +81,12 @@ class AgentScore:
     verifier_rejections: int = 0
     abstentions: int = 0
 
+    #: Model calls per exception. Published because an agent that always
+    #: finishes in one step is not doing multi-step reasoning, however much
+    #: its architecture diagram suggests otherwise.
+    steps_per_exception: list[int] = field(default_factory=list)
+    retries: int = 0
+
     model_calls: int = 0
     tokens: int = 0
     rate_limit_wait_s: float = 0.0
@@ -193,6 +199,10 @@ def score_agent(result, truth: dict) -> AgentScore:
         if case.owner == expected:
             out.routed_correctly += 1
 
+    triage = (result.run.notes or {}).get("triage", {})
+    out.steps_per_exception = list(triage.get("steps") or [])
+    out.retries = int(triage.get("retries") or 0)
+
     llm = (result.run.notes or {}).get("llm", {})
     out.model_calls = llm.get("calls", 0)
     out.tokens = llm.get("tokens", 0)
@@ -245,6 +255,23 @@ def render_markdown(score: AgentScore) -> str:
     add(f"| Tokens | {score.tokens:,} |")
     add(f"| Tokens per useful outcome | {score.tokens_per_useful_outcome:,.0f} |")
     add("")
+
+    if score.steps_per_exception:
+        most = max(score.steps_per_exception)
+        add(
+            f"Model calls per exception: {score.steps_per_exception} "
+            f"(max {most}, {score.retries} retries).\n"
+        )
+        if score.retries == 0:
+            add(
+                "> **On this dataset the agent never needed a second attempt.** The "
+                "retry path exists, is bounded to two attempts, feeds the verifier's "
+                "exact signed delta back into the next prompt, and is covered by "
+                "tests that force it — but deterministic candidate generation runs "
+                "first, so by the time a model is consulted there is usually only one "
+                "sensible answer. Reporting one-step behaviour as multi-step reasoning "
+                "would be the easiest lie in this project to tell.\n"
+            )
 
     if score.wrong_examples:
         add("### Wrong resolutions\n")

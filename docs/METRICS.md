@@ -13,8 +13,8 @@
 | Links wrong | 0 |
 | Value reconciled | ₹1,53,97,905.00 (98.59%) |
 | Value left in exceptions | ₹8,09,392.28 |
-| Wall clock | 760 ms |
-| Throughput | 4,176 records/sec |
+| Wall clock | 740 ms |
+| Throughput | 4,289 records/sec |
 
 ## Links, by tier
 
@@ -94,7 +94,7 @@ The same fixtures, the same seed, one flag different. This is the honest test of
 | Exceptions still open | 130 | 128 | -2 |
 | Closed by model | 0 | 0 | +0 |
 | Rejected by verifier | 0 | 0 | +0 |
-| Wall clock (ms) | 725 | 760 | +35 |
+| Wall clock (ms) | 760 | 740 | -20 |
 
 Model calls: 3 (3 served from cassette, 0 live). Degraded: False.
 
@@ -114,6 +114,10 @@ Scored against the held-out truth. The first row is the one that matters: a brea
 | Model calls | 3 |
 | Tokens | 5,035 |
 | Tokens per useful outcome | 1,007 |
+
+Model calls per exception: [1, 1, 1] (max 1, 0 retries).
+
+> **On this dataset the agent never needed a second attempt.** The retry path exists, is bounded to two attempts, feeds the verifier's exact signed delta back into the next prompt, and is covered by tests that force it — but deterministic candidate generation runs first, so by the time a model is consulted there is usually only one sensible answer. Reporting one-step behaviour as multi-step reasoning would be the easiest lie in this project to tell.
 
 No exception was closed against the truth. Every break whose explanation is not in the records — a bank's own NEFT charge, for instance — was escalated or raised as an explicitly unverified hypothesis rather than auto-closed.
 
