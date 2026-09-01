@@ -1,0 +1,193 @@
+{
+  "label": "rules + model",
+  "ai_enabled": true,
+  "duration_ms": 723,
+  "links": [
+    {
+      "name": "Tier 2 \u2014 settlement line to order",
+      "expected": 1459,
+      "produced": 1459,
+      "correct": 1459,
+      "wrong": 0,
+      "missed": 0,
+      "examples_wrong": []
+    },
+    {
+      "name": "Tier 1 \u2014 bank credit to payout",
+      "expected": 20,
+      "produced": 20,
+      "correct": 20,
+      "wrong": 0,
+      "missed": 0,
+      "examples_wrong": []
+    },
+    {
+      "name": "Tier 3 \u2014 reversal to original payment",
+      "expected": 101,
+      "produced": 101,
+      "correct": 101,
+      "wrong": 0,
+      "missed": 0,
+      "examples_wrong": []
+    }
+  ],
+  "exceptions": [
+    {
+      "code": "CHARGEBACK_DEDUCTION",
+      "expected": 10,
+      "reported": 10,
+      "matched": 10
+    },
+    {
+      "code": "DUPLICATE",
+      "expected": 16,
+      "reported": 16,
+      "matched": 16
+    },
+    {
+      "code": "FEE_MISMATCH",
+      "expected": 10,
+      "reported": 10,
+      "matched": 10
+    },
+    {
+      "code": "GST_MISMATCH",
+      "expected": 4,
+      "reported": 4,
+      "matched": 4
+    },
+    {
+      "code": "MISSING_BANK_CREDIT",
+      "expected": 0,
+      "reported": 2,
+      "matched": 0
+    },
+    {
+      "code": "ON_HOLD",
+      "expected": 41,
+      "reported": 41,
+      "matched": 41
+    },
+    {
+      "code": "ORPHAN_SETTLEMENT_LINE",
+      "expected": 1,
+      "reported": 1,
+      "matched": 1
+    },
+    {
+      "code": "PARTIAL_REFUND_SPLIT",
+      "expected": 14,
+      "reported": 14,
+      "matched": 14
+    },
+    {
+      "code": "REFUND_WITHOUT_ORIGINAL",
+      "expected": 30,
+      "reported": 30,
+      "matched": 30
+    },
+    {
+      "code": "ROUNDING",
+      "expected": 1,
+      "reported": 1,
+      "matched": 1
+    },
+    {
+      "code": "SHORT_CREDIT",
+      "expected": 2,
+      "reported": 2,
+      "matched": 2
+    },
+    {
+      "code": "TIMING_DIFFERENCE",
+      "expected": 1,
+      "reported": 1,
+      "matched": 1
+    },
+    {
+      "code": "UNMATCHED_BANK_CREDIT",
+      "expected": 1,
+      "reported": 2,
+      "matched": 1
+    }
+  ],
+  "orders": 1516,
+  "settlement_lines": 1632,
+  "bank_txns": 26,
+  "gross_paise": 1561807200,
+  "value_reconciled_paise": 1539790500,
+  "value_in_exceptions_paise": 80939228,
+  "exceptions_open": 128,
+  "exceptions_auto_resolved": 3,
+  "exceptions_ai_resolved": 0,
+  "exceptions_ai_rejected": 0,
+  "exceptions_rolled_forward": 1,
+  "llm": {
+    "calls": 3,
+    "cassette_hits": 3,
+    "live_calls": 0,
+    "failures": 0,
+    "tokens": 5035,
+    "rate_limit_wait_s": 0.0,
+    "rpm_cap": 10,
+    "degraded": false,
+    "degraded_reason": ""
+  },
+  "hard_cases": [
+    {
+      "kind": "utr_missing_from_narration",
+      "subject_kind": "bank_txn",
+      "subject_id": "N924654502894",
+      "credit_paise": 65287270,
+      "components": [
+        "setl_5P60SVmEwNqZSf"
+      ],
+      "solvable_by_rules": true,
+      "note": "UTR absent from the narration. Still recoverable by amount and date when the payout is unambiguous."
+    },
+    {
+      "kind": "utr_missing_from_narration",
+      "subject_kind": "bank_txn",
+      "subject_id": "N410143701993",
+      "credit_paise": 76894734,
+      "components": [
+        "setl_X03H3LRrAXrVHk"
+      ],
+      "solvable_by_rules": true,
+      "note": "UTR absent from the narration. Still recoverable by amount and date when the payout is unambiguous."
+    },
+    {
+      "kind": "utr_missing_from_narration",
+      "subject_kind": "bank_txn",
+      "subject_id": "N937517893866",
+      "credit_paise": 68889882,
+      "components": [
+        "setl_h1WtzHwKHTV5yc"
+      ],
+      "solvable_by_rules": true,
+      "note": "UTR absent from the narration. Still recoverable by amount and date when the payout is unambiguous."
+    },
+    {
+      "kind": "consolidated_credit",
+      "subject_kind": "bank_txn",
+      "subject_id": "N378983977434",
+      "credit_paise": 180471541,
+      "components": [
+        "setl_5mfYKu6bIcRegT",
+        "setl_ciRz08X79fniep"
+      ],
+      "solvable_by_rules": false,
+      "note": "One bank line for two payouts. No matching rule can close this; it needs a proposed decomposition that sums exactly."
+    }
+  ],
+  "derived": {
+    "auto_match_rate": 1.0,
+    "false_match_rate": 0.0,
+    "value_reconciled_pct": 0.985903,
+    "throughput_records_per_sec": 4390.0,
+    "total_links_produced": 1580,
+    "total_links_correct": 1580,
+    "total_links_wrong": 0,
+    "total_links_expected": 1580
+  }
+}

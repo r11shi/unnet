@@ -156,24 +156,59 @@ input.
 
 It stays a hypothesis until it sums exactly.
 
-### The verifier
+### The verifier — three verdicts, not two
 
-`agents/verifier.py` accepts a proposal only if all of:
+`agents/verifier.py` is the load-bearing object in this project, and v1 got it
+wrong in the way most "AI + verifier" designs do: it treated **arithmetic
+consistency as financial truth**. Components that summed to the residual were
+accepted, which meant a model could invent a sub-₹500 "bank charge" and have the
+invention recorded as verified fact.
 
-- components sum to the residual **exactly**, in integer paise;
-- every cited reference exists;
-- no reference is cited twice;
-- no reference is already reconciled elsewhere;
-- every cited amount equals that record's **real** amount, not one chosen to make
-  the sum work (this one matters — a doctored amount can produce a correct total,
-  so arithmetic alone passes it);
-- any unmodelled component (a bank charge) is under ₹500 — balancing the books
-  with a large unnamed adjustment is fitting the number, not explaining it.
+A ₹11.80 shortfall is equally satisfied by a NEFT charge plus GST, by a single
+adjustment, or by two unrelated fees. Arithmetic cannot distinguish them.
 
-Rejected proposals are **kept, not discarded**. The analyst who picks the item up
-should see what was tried and why it did not hold.
+| Verdict | Condition | Consequence |
+| --- | --- | --- |
+| `RESOLVED_VERIFIED` | every component **read back from a ledger row** at verify time; sums exactly; no rival combination | auto-close |
+| `HYPOTHESIS` | sums exactly, but contains an invented component **or** another combination also fits | never auto-closed; routed to a human with the hypothesis |
+| `REJECTED` | citation or arithmetic fails | stays open, reason recorded |
 
----
+Rejection also covers: a reference that does not exist, one cited twice, one
+already reconciled elsewhere, a **restated amount** (the subtle attack — a
+doctored figure can make the total come out right, so arithmetic alone passes
+it), and an unmodelled component above ₹500, which is balancing the books rather
+than explaining them.
+
+**Provenance** is what separates the first two verdicts. A reference string is a
+name; evidence is a name plus the row it was read back from at verification
+time. Without the read-back, "verified" means "the model quoted an id from a
+list we sent it".
+
+### Untrusted input
+
+`agents/untrusted.py`. Bank narration is chosen by a payer — a UPI remark
+travels through the statement into a prompt. It is fenced, labelled as
+payer-written, and stripped of fence-breakers and invisible characters.
+
+Prompt hygiene narrows the attack; it does not end it. The structural defence
+is that the model cannot write to the ledger, cannot cite a record that does not
+exist, and cannot close anything without provenance. The fixtures carry a live
+injection attempt and a test asserting the verdict is unchanged.
+
+### The agent loop
+
+Propose → verify → on a **rejection**, receive the verifier's exact signed delta
+and revise → stop. Bounded to two attempts. A `HYPOTHESIS` is terminal (it
+already sums; a retry reaches the same place) and so is an abstention.
+
+Every step is appended to an `agent_trace` on the exception, so
+`exception → action → components → verdict → delta → terminal state` is
+reconstructable from the database alone.
+
+Measured on the fixtures: **one call per exception, zero retries.** The retry
+path is real and tested by forcing it with a stub model, but deterministic
+candidate generation runs first, so by the time a model is consulted there is
+usually one sensible answer. That is reported rather than dressed up.
 
 ## 5. Report
 
@@ -237,3 +272,43 @@ The truth file separates two things that are easy to conflate:
   is gone. A run that recovers it another way has done better, not worse, and
   grading those as exceptions the engine "should" have raised would penalise it
   for succeeding.
+
+---
+
+## 6. Case files — closing the loop
+
+`engine/casefile.py`. The track asks for an agent that *closes* a loop;
+detecting and reporting is the first quarter of one.
+
+Every unresolved exception becomes a case with an **owner** (the party who can
+actually fix it), an **ask**, an **evidence pack**, and a **stable key**:
+
+```python
+case_key = sha256(f"{code}|{subject_kind}|{subject_id}")[:16]
+```
+
+Derived from what the problem *is*, not from a row id — every run re-parses the
+sources and allocates new ids, so identity has to survive that or the loop never
+closes. Run 1 raises and routes; `unnet resolve <key>` settles one; run 2
+reports it settled and does not raise it again. Cases still open keep their
+original first-seen run, so ageing is real.
+
+Routing is a lookup table, not a model call. The owner of a `FEE_MISMATCH` is
+always Razorpay support.
+
+Money is reported **identified**, never recovered, and split four ways that are
+never summed — claimable, at risk, bookkeeping, contestable loss. A chargeback
+already lost and a fee a supplier owes back are not the same rupee.
+
+## Observability — three artefacts, deliberately
+
+**Audit** (`recon_audit`): what was decided, by which rule or model, on what
+evidence, with what the verifier said. Model decisions carry
+`source:model:prompt_hash`, so the exact input behind a decision is recoverable.
+
+**Trace** (`agent_trace` on the exception): how the agent got there, step by step.
+
+**Metrics** (`docs/METRICS.md`): how well it did.
+
+Nothing beyond those three. The test is whether a reader can reconstruct one
+decision end to end from the database, and they can.

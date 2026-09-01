@@ -11,10 +11,10 @@ help:
 	@echo "  make setup      create the venv and install"
 	@echo "  make gen        regenerate synthetic fixtures + ground truth"
 	@echo "  make recon      run one reconciliation"
+	@echo "  make cases      outstanding work, by owner and impact"
 	@echo "  make eval       score against ground truth -> docs/metrics.json"
 	@echo "  make ablation   rules-only vs rules+model -> docs/METRICS.md"
 	@echo "  make test       run the test suite"
-	@echo "  make web        build the dashboard (needs node)"
 	@echo "  make serve      start API + dashboard on :8000"
 	@echo "  make demo       gen + recon + serve, offline, no API key needed"
 	@echo "  make record     record model cassettes (needs a provider configured)"
@@ -36,6 +36,10 @@ gen: setup
 recon: setup
 	$(BIN)/python -m unnet.cli recon
 
+.PHONY: cases
+cases: setup
+	$(BIN)/python -m unnet.cli cases
+
 .PHONY: eval
 eval: setup
 	$(BIN)/python -m unnet.cli eval
@@ -47,10 +51,6 @@ ablation: setup
 .PHONY: test
 test: setup
 	$(BIN)/python -m pytest -q
-
-.PHONY: web
-web:
-	cd web && npm install && npm run build
 
 .PHONY: serve
 serve: setup

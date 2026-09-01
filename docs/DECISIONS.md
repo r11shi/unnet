@@ -82,7 +82,37 @@ better it would look in this README.
 
 ---
 
-## 6. No tolerance in the verifier
+## 6. Arithmetic consistency is not financial truth — corrected in v2
+
+**This is the decision I got wrong the first time, and it is the most important
+one in the project.**
+
+v1's verifier accepted any proposal whose components summed to the residual. I
+described that as "the model may propose, it may not post", which sounded
+rigorous and was not: a component of kind `bank_charge` had nothing to look up,
+so a model could **invent a number under ₹500 and have the invention pass as
+verified fact**. Hallucinated evidence, laundered.
+
+The flaw is conceptual, not a bug. A ₹11.80 shortfall is equally satisfied by a
+₹10 NEFT charge plus ₹1.80 GST, by one ₹11.80 adjustment, or by two unrelated
+fees. Only one of those happened. Arithmetic cannot say which, and a system that
+records the model's guess as fact is lying to an auditor.
+
+v2 splits the verdict three ways. `RESOLVED_VERIFIED` requires every component to
+be **read back out of a ledger row at verification time** — a reference string is
+a name, evidence is a name plus the row it came from. `HYPOTHESIS` covers a
+proposal that sums exactly but rests on an invented component, or where a second
+combination also fits; it is never auto-closed and goes to a human *with* the
+guess attached. `REJECTED` is everything else.
+
+The cost is real and worth naming: with inventions barred from auto-resolution,
+**the model now closes almost nothing on arithmetic**. Live, it auto-closed zero
+exceptions. That is the correct number, and a v1-shaped system would have
+reported two "AI-resolved" exceptions on the same data.
+
+---
+
+## 7. No tolerance in the verifier
 
 A proposal is rejected if it is off by one paisa. Not "off by more than a
 rupee" — one paisa.
@@ -99,7 +129,7 @@ verifier's slack.
 
 ---
 
-## 7. The dashboard is one HTML file with no build step
+## 8. The dashboard is one HTML file with no build step
 
 I planned a Vite + React + Tailwind + Recharts SPA and changed my mind.
 
@@ -117,7 +147,7 @@ framework. At this size the trade is clearly worth it.
 
 ---
 
-## 8. The waterfall's y-axis does not start at zero
+## 9. The waterfall's y-axis does not start at zero
 
 Gross is ~₹7,00,000 and MDR is ~₹5,000. On a zero-based axis every deduction —
 the entire point of the chart — renders as a one-pixel hairline.
@@ -130,7 +160,7 @@ whose start and end are close together.
 
 ---
 
-## 9. Ground truth separates "expected exceptions" from "hard cases"
+## 10. Ground truth separates "expected exceptions" from "hard cases"
 
 Hiding a UTR from a bank narration does not create a reconciliation break — the
 money is right, only the obvious link is gone. If the engine recovers it by
@@ -144,7 +174,7 @@ system does.
 
 ---
 
-## 10. Defects are injected by count, not by probability
+## 11. Defects are injected by count, not by probability
 
 Over 21 payouts a 2% per-batch defect probability routinely produces a fixture
 with **zero** instances of that defect. An exception class the fixture never
@@ -158,7 +188,7 @@ make the expected residual for either one wrong).
 
 ---
 
-## 11. The offline default is cassette replay, not a stub
+## 12. The offline default is cassette replay, not a stub
 
 The model layer defaults to replaying committed recordings. It would have been
 easy to ship a "stub provider" that produces correct answers via a local
@@ -172,7 +202,7 @@ was run**, and the README says that plainly rather than implying otherwise.
 
 ---
 
-## 12. `expire_on_commit=False` on the session
+## 13. `expire_on_commit=False` on the session
 
 The engine builds a whole run in memory, persists it, then reports on it. With
 SQLAlchemy's default, every attribute touched after the commit triggers a
@@ -181,6 +211,46 @@ re-query, and any object read after the session closes raises
 tried to print a summary.
 
 ---
+
+## 14. The agent loop is shallow, and the step count is published
+
+A two-attempt loop that retries only on a *rejection*, feeding the verifier's
+exact signed delta into the next prompt. Not eight tools and a general ReAct
+loop.
+
+The reason is that deterministic candidate generation runs first, so by the time
+a model is consulted the search space is already small. An agent that re-rolls
+the dice on the same evidence is not investigating.
+
+The honest part: measured on the fixtures, **model calls per exception are
+`[1, 1, 1]` with zero retries**. The retry path is covered by tests that force it
+with a stub model, but this data never exercised it. That number is published in
+`METRICS.md` because reporting one-step behaviour as multi-step reasoning would
+be the easiest lie in this project to tell — and a reviewer who reads the trace
+would catch it in a minute.
+
+## 15. Routing is a table, not a model call
+
+The owner of a `FEE_MISMATCH` is always Razorpay support. A short credit is
+always the bank's to answer for. Asking a model to make that call would spend a
+token, add latency, and be less reliable than a dict.
+
+This matters more than it sounds: it is the difference between "we used AI for
+the workflow" and "we used AI where a rule could not go". The published routing
+accuracy is labelled honestly as a consequence — since the map is fixed, it
+measures whether the right *exception code* was assigned, not an independent
+judgement.
+
+## 16. Money is "identified", never "recovered"
+
+Nothing in this system recovers money. Recovery is a bank crediting funds back,
+which is not an event Unnet can observe.
+
+The four buckets — claimable, at risk, bookkeeping, contestable loss — are also
+never summed, and `summarise()` deliberately exposes no combined total. A
+chargeback already lost and a mis-billed fee a supplier owes back are not the
+same rupee, and adding them produces a headline number that is larger than
+anything demonstrated. That is the overclaim a finance reviewer catches first.
 
 ## Things I would do differently with more than four days
 

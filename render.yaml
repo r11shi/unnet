@@ -1,0 +1,15 @@
+# One-click deploy to Render's free tier.
+#
+# The demo is read-only and needs no secrets: the container builds its own
+# fixtures and runs a full reconciliation at image-build time, and the model
+# layer replays committed cassettes rather than calling out.
+services:
+  - type: web
+    name: unnet
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    envVars:
+      - key: UNNET_LLM_PROVIDER
+        value: offline
