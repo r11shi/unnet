@@ -153,6 +153,41 @@ def reconcile(
     duration_ms = int((time.perf_counter() - started) * 1000)
     run = _summarise(ctx, netting_result, duration_ms, ai_enabled=ai_enabled, label=label)
 
+    # The un-netting waterfall is stored with the run rather than recomputed on
+    # request: it is small, it is what the dashboard opens with, and persisting
+    # it means the chart shows what this run actually concluded rather than what
+    # a later recomputation would conclude from mutated data.
+    run.notes = {
+        **run.notes,
+        "breakdowns": [
+            {
+                "settlement_id": b.settlement_id,
+                "settlement_utr": b.settlement_utr,
+                "settled_at": b.settled_at,
+                "gross_paise": b.gross_paise,
+                "mdr_paise": b.mdr_paise,
+                "gst_paise": b.gst_paise,
+                "refunds_paise": b.refunds_paise,
+                "disputes_paise": b.disputes_paise,
+                "dispute_fees_paise": b.dispute_fees_paise,
+                "adjustments_paise": b.adjustments_paise,
+                "transfers_paise": b.transfers_paise,
+                "computed_net_paise": b.computed_net_paise,
+                "dual_net_paise": b.dual_net_paise,
+                "reported_net_paise": b.reported_net_paise,
+                "bank_credit_paise": b.bank_credit_paise,
+                "bank_residual_paise": b.bank_residual_paise,
+                "internally_consistent": b.internally_consistent,
+                "line_count": b.line_count,
+                "payment_count": b.payment_count,
+                "refund_count": b.refund_count,
+                "dispute_count": b.dispute_count,
+                "waterfall": b.waterfall(),
+            }
+            for b in netting_result.breakdowns
+        ],
+    }
+
     if llm_client is not None:
         stats = llm_client.stats()
         run.llm_calls = stats["calls"]

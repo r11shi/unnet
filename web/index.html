@@ -1,0 +1,640 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Unnet — Razorpay settlement reconciliation</title>
+<style>
+:root {
+  --bg: #0b0f14;
+  --panel: #111820;
+  --panel-2: #161f2a;
+  --line: #22303f;
+  --line-soft: #1a2532;
+  --text: #e6edf3;
+  --muted: #8496a9;
+  --dim: #5d7186;
+  --accent: #35d0ba;
+  --accent-dim: #1d6f65;
+  --warn: #e8b046;
+  --bad: #e5646d;
+  --good: #57c98b;
+  --violet: #9b8cf0;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--bg); color: var(--text); font-family: var(--sans);
+  font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent); }
+
+/* ---------- shell ---------- */
+.shell { display: grid; grid-template-columns: 216px 1fr; min-height: 100vh; }
+.side {
+  background: var(--panel); border-right: 1px solid var(--line);
+  padding: 20px 0; display: flex; flex-direction: column;
+}
+.brand { padding: 0 20px 20px; border-bottom: 1px solid var(--line-soft); }
+.brand h1 {
+  margin: 0; font-size: 19px; letter-spacing: -0.02em; font-weight: 650;
+}
+.brand .tag { color: var(--dim); font-size: 11.5px; margin-top: 3px; line-height: 1.35; }
+nav { padding: 12px 10px; display: flex; flex-direction: column; gap: 1px; }
+nav button {
+  all: unset; cursor: pointer; padding: 8px 11px; border-radius: 6px;
+  color: var(--muted); font-size: 13.5px; display: flex; gap: 9px; align-items: center;
+}
+nav button:hover { background: var(--panel-2); color: var(--text); }
+nav button.on { background: var(--accent-dim); color: #eafffb; font-weight: 550; }
+nav button .ic { width: 15px; text-align: center; opacity: .85; font-size: 12px; }
+.side-foot {
+  margin-top: auto; padding: 14px 20px 0; border-top: 1px solid var(--line-soft);
+  color: var(--dim); font-size: 11px; font-family: var(--mono); line-height: 1.6;
+}
+main { padding: 26px 30px 60px; max-width: 1500px; overflow-x: hidden; }
+.head { margin-bottom: 20px; }
+.head h2 { margin: 0 0 4px; font-size: 21px; font-weight: 620; letter-spacing: -0.02em; }
+.head p { margin: 0; color: var(--muted); max-width: 78ch; font-size: 13px; }
+
+/* ---------- primitives ---------- */
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(178px, 1fr)); gap: 12px; margin-bottom: 22px; }
+.tile { background: var(--panel); border: 1px solid var(--line); border-radius: 9px; padding: 14px 15px; }
+.tile .k { color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: .07em; }
+.tile .v { font-size: 25px; font-weight: 620; margin-top: 5px; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.tile .s { color: var(--muted); font-size: 11.5px; margin-top: 3px; }
+.tile.good .v { color: var(--good); }
+.tile.warn .v { color: var(--warn); }
+.tile.bad  .v { color: var(--bad); }
+.tile.acc  .v { color: var(--accent); }
+
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 9px; margin-bottom: 18px; }
+.panel > h3 {
+  margin: 0; padding: 13px 16px; border-bottom: 1px solid var(--line-soft);
+  font-size: 13px; font-weight: 600; letter-spacing: -0.01em;
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+}
+.panel > h3 .note { color: var(--dim); font-weight: 400; font-size: 11.5px; }
+.panel .body { padding: 15px 16px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+@media (max-width: 1100px) { .grid2 { grid-template-columns: 1fr; } .shell { grid-template-columns: 1fr; } .side { display: none; } }
+
+table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+th {
+  text-align: left; color: var(--dim); font-weight: 550; font-size: 10.5px;
+  text-transform: uppercase; letter-spacing: .06em; padding: 8px 10px;
+  border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--panel);
+}
+td { padding: 7px 10px; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+tr:last-child td { border-bottom: none; }
+tbody tr:hover { background: var(--panel-2); }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; font-family: var(--mono); }
+.mono { font-family: var(--mono); font-size: 11.5px; }
+.scroll { max-height: calc(100vh - 290px); min-height: 260px; overflow: auto; }
+
+.pill {
+  display: inline-block; padding: 1.5px 7px; border-radius: 20px; font-size: 10.5px;
+  font-weight: 600; letter-spacing: .02em; white-space: nowrap;
+  border: 1px solid transparent;
+}
+.pill.rule  { background: #16302c; color: var(--accent); border-color: #1f4a44; }
+.pill.model { background: #251f46; color: var(--violet); border-color: #372e63; }
+.pill.human { background: #33290f; color: var(--warn); border-color: #4d3d14; }
+.pill.open  { background: #3a1f22; color: var(--bad); border-color: #55292e; }
+.pill.ok    { background: #16321f; color: var(--good); border-color: #1f4a2e; }
+.pill.soft  { background: var(--panel-2); color: var(--muted); border-color: var(--line); }
+
+.bar { height: 5px; background: var(--line-soft); border-radius: 3px; overflow: hidden; }
+.bar > i { display: block; height: 100%; background: var(--accent); }
+
+input, select, textarea, button.act {
+  background: var(--panel-2); border: 1px solid var(--line); color: var(--text);
+  border-radius: 6px; padding: 7px 10px; font-size: 12.5px; font-family: inherit;
+}
+input:focus, select:focus, textarea:focus { outline: 1px solid var(--accent-dim); }
+button.act { cursor: pointer; }
+button.act:hover { border-color: var(--accent-dim); }
+button.act.primary { background: var(--accent-dim); border-color: var(--accent-dim); color: #eafffb; font-weight: 600; }
+.filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
+.filters label { color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+
+.empty { color: var(--dim); padding: 26px; text-align: center; font-size: 13px; }
+.muted { color: var(--muted); }
+.dim { color: var(--dim); }
+details.ev { margin-top: 6px; }
+details.ev summary { cursor: pointer; color: var(--dim); font-size: 11.5px; }
+pre.json {
+  background: var(--bg); border: 1px solid var(--line-soft); border-radius: 6px;
+  padding: 10px; overflow: auto; font-size: 11px; font-family: var(--mono);
+  color: var(--muted); margin: 6px 0 0; max-height: 260px;
+}
+.callout {
+  border-left: 2px solid var(--accent); background: var(--panel-2);
+  padding: 10px 13px; border-radius: 0 6px 6px 0; color: var(--muted);
+  font-size: 12.5px; margin-bottom: 16px;
+}
+.callout.warn { border-left-color: var(--warn); }
+.callout b { color: var(--text); font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="side">
+    <div class="brand">
+      <h1>Unnet</h1>
+      <div class="tag">Un-nets a lumped Razorpay payout back to the order, to the paisa.</div>
+    </div>
+    <nav id="nav"></nav>
+    <div class="side-foot" id="foot"></div>
+  </aside>
+  <main id="main"><div class="empty">Loading…</div></main>
+</div>
+
+<script>
+const VIEWS = [
+  ["overview",   "◧", "Overview"],
+  ["unnetting",  "⌸", "Un-netting"],
+  ["matches",    "⇄", "Matches"],
+  ["exceptions", "⚠", "Exceptions"],
+  ["ask",        "✦", "Ask"],
+  ["audit",      "☰", "Audit trail"],
+];
+
+const S = { view: "overview", summary: null, waterfall: null, batch: 0, cache: {} };
+
+// ---------- helpers ----------
+const api = async (p, o) => (await fetch(p, o)).json();
+const el = (h) => { const d = document.createElement("div"); d.innerHTML = h.trim(); return d.firstElementChild; };
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
+
+// Indian digit grouping: ₹12,34,567.89
+function inr(paise, opts = {}) {
+  const neg = paise < 0;
+  const abs = Math.abs(Math.round(paise));
+  const whole = Math.floor(abs / 100), frac = String(abs % 100).padStart(2, "0");
+  let d = String(whole), out;
+  if (d.length > 3) {
+    let head = d.slice(0, -3); const tail = d.slice(-3); const g = [];
+    while (head.length > 2) { g.unshift(head.slice(-2)); head = head.slice(0, -2); }
+    if (head) g.unshift(head);
+    out = g.join(",") + "," + tail;
+  } else out = d;
+  const sign = neg ? "−" : (opts.signed ? "+" : "");
+  return `${sign}₹${out}${opts.noPaise ? "" : "." + frac}`;
+}
+const pct = (n) => (n * 100).toFixed(2) + "%";
+const num = (n) => Number(n ?? 0).toLocaleString("en-IN");
+
+function decidedPill(v) {
+  const cls = v === "model" ? "model" : v === "human" ? "human" : "rule";
+  return `<span class="pill ${cls}">${esc(v)}</span>`;
+}
+function statusPill(s) {
+  const map = {
+    open: "open", ai_rejected: "open",
+    auto_resolved: "ok", ai_resolved: "ok", accepted_by_human: "ok",
+    rolled_forward: "soft", rejected_by_human: "soft",
+  };
+  return `<span class="pill ${map[s] || "soft"}">${esc(String(s).replace(/_/g, " "))}</span>`;
+}
+
+// ---------- waterfall chart (hand-drawn SVG) ----------
+//
+// The y-axis deliberately does NOT start at zero. On a real payout the gross is
+// ~₹7,00,000 and the MDR is ~₹5,000, so a zero-based axis renders every
+// deduction — the entire point of the chart — as a one-pixel hairline. The axis
+// is instead framed on the band the money actually moves through, and labelled
+// as such, which is the standard treatment for a waterfall whose start and end
+// are close together.
+function waterfallSVG(steps) {
+  const W = 940, H = 330, PADL = 74, PADR = 14, PADB = 74, PADT = 26;
+  const n = steps.length;
+  const plotW = W - PADL - PADR;
+  const bw = Math.max(22, Math.min(66, plotW / n - 16));
+  const gap = n > 1 ? (plotW - bw * n) / (n - 1) : 0;
+
+  // Each intermediate bar floats between the running total before and after it.
+  let run = 0; const bars = [];
+  for (const s of steps) {
+    if (s.kind === "start" || s.kind === "total") {
+      bars.push({ ...s, from: null, to: s.delta_paise });
+      run = s.delta_paise;
+    } else {
+      bars.push({ ...s, from: run, to: run + s.delta_paise });
+      run += s.delta_paise;
+    }
+  }
+
+  const levels = bars.flatMap(b => (b.from == null ? [b.to] : [b.from, b.to]));
+  let lo = Math.min(...levels), hi = Math.max(...levels);
+  const span = hi - lo || Math.abs(hi) || 1;
+  lo -= span * 0.18; hi += span * 0.12;
+  const y = (v) => PADT + (H - PADT - PADB) * (1 - (v - lo) / (hi - lo));
+
+  const color = {
+    start: "#35d0ba", total: "#35d0ba", fee: "#e8b046", reversal: "#e5646d",
+    adjustment: "#9b8cf0", transfer: "#9b8cf0", residual: "#e5646d",
+  };
+
+  let out = `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" role="img" aria-label="Payout un-netting waterfall">`;
+
+  // Gridlines with real rupee values, so the compressed axis stays readable.
+  for (let i = 0; i <= 4; i++) {
+    const v = lo + (hi - lo) * (i / 4);
+    const gy = y(v);
+    out += `<line x1="${PADL - 6}" y1="${gy}" x2="${W - PADR}" y2="${gy}" stroke="#1a2532"/>`;
+    out += `<text x="${PADL - 11}" y="${gy + 3.5}" text-anchor="end" fill="#5d7186" font-size="9.5" font-family="ui-monospace,monospace">${esc(inr(v, { noPaise: true }))}</text>`;
+  }
+
+  bars.forEach((b, i) => {
+    const x = PADL + i * (bw + gap);
+    const isTotal = b.from == null;
+    const top = isTotal ? y(b.to) : y(Math.max(b.from, b.to));
+    const bot = isTotal ? y(lo) : y(Math.min(b.from, b.to));
+    const h = Math.max(2.5, bot - top);
+    const c = color[b.kind] || "#8496a9";
+
+    out += `<rect x="${x}" y="${top}" width="${bw}" height="${h}" rx="2.5" fill="${c}" opacity="${isTotal ? .95 : .85}"/>`;
+    if (i < bars.length - 1) {
+      const ny = y(b.to);
+      out += `<line x1="${x + (isTotal ? bw : 0)}" y1="${ny}" x2="${x + bw + gap}" y2="${ny}" stroke="#2b3a4b" stroke-dasharray="2 3"/>`;
+    }
+    out += `<text x="${x + bw / 2}" y="${top - 7}" text-anchor="middle" fill="#e6edf3" font-size="10.5" font-family="ui-monospace,monospace">${esc(inr(b.delta_paise, { noPaise: true }))}</text>`;
+    out += `<text x="${x + bw / 2}" y="${H - PADB + 20}" text-anchor="end" fill="#8496a9" font-size="10.5" transform="rotate(-34 ${x + bw / 2} ${H - PADB + 20})">${esc(b.label)}</text>`;
+  });
+
+  out += `<text x="${W - PADR}" y="${H - 6}" text-anchor="end" fill="#5d7186" font-size="9.5">axis starts at ${esc(inr(lo, { noPaise: true }))}, not zero — otherwise the deductions are invisible</text>`;
+  out += `</svg>`;
+  return out;
+}
+
+// ---------- views ----------
+async function viewOverview() {
+  const s = S.summary, r = s.run;
+  const matchRate = r.orders_count ? r.matched_count / (r.orders_count + r.settlement_lines_count + r.bank_txns_count) : 0;
+  const reconciledPct = r.gross_paise ? r.value_reconciled_paise / r.gross_paise : 0;
+  const records = r.orders_count + r.settlement_lines_count + r.bank_txns_count;
+  const throughput = r.duration_ms ? Math.round(records / (r.duration_ms / 1000)) : 0;
+
+  let h = `
+  <div class="head">
+    <h2>Reconciliation ${esc(r.run_id)}</h2>
+    <p>Three sources — the merchant's ledger, Razorpay's settlement recon report and the bank statement —
+       matched into one reconciled position, with everything that could not be closed listed honestly.</p>
+  </div>
+  <div class="tiles">
+    <div class="tile acc"><div class="k">Value reconciled</div><div class="v">${inr(r.value_reconciled_paise, { noPaise: true })}</div><div class="s">${pct(reconciledPct)} of ${inr(r.gross_paise, { noPaise: true })} gross</div></div>
+    <div class="tile good"><div class="k">Links made</div><div class="v">${num(r.matched_count)}</div><div class="s">across ${num(records)} records</div></div>
+    <div class="tile ${r.exceptions_open ? "warn" : "good"}"><div class="k">Exceptions open</div><div class="v">${num(r.exceptions_open)}</div><div class="s">${inr(r.value_in_exceptions_paise, { noPaise: true })} unresolved</div></div>
+    <div class="tile"><div class="k">Wall clock</div><div class="v">${num(r.duration_ms)}<span style="font-size:14px;color:var(--muted)"> ms</span></div><div class="s">${num(throughput)} records/sec</div></div>
+    <div class="tile"><div class="k">Model calls</div><div class="v">${num(r.llm_calls)}</div><div class="s">${r.llm_degraded ? "degraded to rules" : (r.ai_enabled ? "agents enabled" : "rules only")}</div></div>
+  </div>`;
+
+  h += `<div class="callout"><b>Where the AI is, and is not.</b> Matching, arithmetic, fee and GST recomputation
+        are entirely deterministic — a model is never asked to decide what equals what. A model is consulted only
+        for column mapping on unseen file formats, and to propose an explanation for a residual that exact search
+        could not close. Every proposal it makes must sum to the residual exactly, in integer paise, or it is
+        rejected and stays in the queue.</div>`;
+
+  h += `<div class="grid2">
+    <div class="panel"><h3>How the links were made <span class="note">rule, and how many</span></h3>
+      <div class="body"><table><thead><tr><th>Rule</th><th class="num">Links</th><th style="width:34%"></th></tr></thead><tbody>`;
+  const maxRule = Math.max(...s.matches_by_rule.map(m => m.count), 1);
+  for (const m of s.matches_by_rule) {
+    h += `<tr><td class="mono">${esc(m.rule_id)}</td><td class="num">${num(m.count)}</td>
+          <td><div class="bar"><i style="width:${(m.count / maxRule * 100).toFixed(1)}%"></i></div></td></tr>`;
+  }
+  h += `</tbody></table></div></div>`;
+
+  h += `<div class="panel"><h3>The honest exception list <span class="note">what we could not close</span></h3>
+        <div class="body scroll"><table><thead><tr><th>Code</th><th class="num">Open</th><th class="num">Resolved</th><th class="num">Value</th></tr></thead><tbody>`;
+  for (const e of s.exceptions_by_code) {
+    h += `<tr><td class="mono">${esc(e.code)}</td>
+          <td class="num">${e.open ? `<span style="color:var(--warn)">${e.open}</span>` : "—"}</td>
+          <td class="num">${e.resolved ? `<span style="color:var(--good)">${e.resolved}</span>` : "—"}</td>
+          <td class="num">${e.value_paise ? inr(e.value_paise, { noPaise: true }) : "—"}</td></tr>`;
+  }
+  h += `</tbody></table></div></div></div>`;
+  return h;
+}
+
+async function viewUnnetting() {
+  if (!S.waterfall) S.waterfall = await api("/api/waterfall");
+  const batches = S.waterfall.batches;
+  if (!batches.length) return `<div class="empty">No payouts in this run.</div>`;
+  const b = batches[Math.min(S.batch, batches.length - 1)];
+
+  let h = `<div class="head">
+    <h2>Un-netting a payout</h2>
+    <p>One bank credit covers hundreds of orders, net of MDR, 18% GST on that MDR, refunds, chargebacks and
+       adjustments. This is that single figure taken apart and put back together — derived two independent ways
+       and required to agree.</p></div>`;
+
+  h += `<div class="filters"><label>Payout</label><select id="batchSel">`;
+  batches.forEach((x, i) => {
+    h += `<option value="${i}" ${i === S.batch ? "selected" : ""}>${esc(x.settlement_id)} · ${esc((x.settled_at || "").slice(0, 10))} · ${inr(x.computed_net_paise, { noPaise: true })}</option>`;
+  });
+  h += `</select><span class="dim">${batches.length} payouts in this run</span></div>`;
+
+  const consistent = b.internally_consistent;
+  const residual = b.bank_residual_paise;
+
+  h += `<div class="tiles">
+    <div class="tile"><div class="k">Gross sales</div><div class="v">${inr(b.gross_paise, { noPaise: true })}</div><div class="s">${num(b.payment_count)} payments</div></div>
+    <div class="tile warn"><div class="k">MDR + GST</div><div class="v">${inr(b.mdr_paise + b.gst_paise, { noPaise: true })}</div><div class="s">${inr(b.mdr_paise, { noPaise: true })} fee · ${inr(b.gst_paise, { noPaise: true })} GST</div></div>
+    <div class="tile bad"><div class="k">Reversals</div><div class="v">${inr(b.refunds_paise + b.disputes_paise, { noPaise: true })}</div><div class="s">${num(b.refund_count)} refunds · ${num(b.dispute_count)} chargebacks</div></div>
+    <div class="tile acc"><div class="k">Net payout</div><div class="v">${inr(b.computed_net_paise, { noPaise: true })}</div><div class="s">${b.bank_credit_paise != null ? "bank credited " + inr(b.bank_credit_paise, { noPaise: true }) : "not yet credited"}</div></div>
+    <div class="tile ${residual ? "bad" : "good"}"><div class="k">Unexplained</div><div class="v">${residual == null ? "—" : inr(residual)}</div><div class="s">${residual ? "raised as an exception" : "reconciled to the paisa"}</div></div>
+  </div>`;
+
+  h += `<div class="panel"><h3>Gross to bank credit
+        <span class="note">${consistent ? "credit/debit and amount/fee agree" : "⚠ the report disagrees with itself"}</span></h3>
+        <div class="body">${waterfallSVG(b.waterfall)}</div></div>`;
+
+  h += `<div class="panel"><h3>Proof <span class="note">two independent derivations of the same number</span></h3>
+    <div class="body"><table><tbody>
+      <tr><td>From <span class="mono">credit − debit</span> columns</td><td class="num">${inr(b.computed_net_paise)}</td></tr>
+      <tr><td>From <span class="mono">amount − fee</span>, by entity type</td><td class="num">${inr(b.dual_net_paise)}</td></tr>
+      <tr><td>Reported by Razorpay for this settlement</td><td class="num">${inr(b.reported_net_paise)}</td></tr>
+      <tr><td>Credited by the bank</td><td class="num">${b.bank_credit_paise == null ? "not yet" : inr(b.bank_credit_paise)}</td></tr>
+      <tr><td><b>Residual</b></td><td class="num"><b style="color:${residual ? "var(--bad)" : "var(--good)"}">${residual == null ? "—" : inr(residual)}</b></td></tr>
+    </tbody></table>
+    <p class="dim" style="margin:12px 0 0;font-size:12px">UTR <span class="mono">${esc(b.settlement_utr || "—")}</span> ·
+       ${num(b.line_count)} settlement lines</p></div></div>`;
+  return h;
+}
+
+async function viewMatches() {
+  const q = S.cache.matchQ || {};
+  const params = new URLSearchParams({ limit: "150" });
+  for (const k of ["tier", "rule_id", "decided_by", "q"]) if (q[k]) params.set(k, q[k]);
+  const d = await api("/api/matches?" + params);
+
+  let h = `<div class="head"><h2>Matches</h2>
+    <p>Every link the engine was willing to stand behind, with the rule that made it, its confidence, and the
+       evidence behind it. Nothing here was decided by similarity alone — the fuzzy rules require a unique
+       candidate and refuse when more than one fits.</p></div>`;
+
+  h += `<div class="filters">
+    <label>Tier</label>
+    <select id="fTier">
+      <option value="">all</option>
+      <option value="tier1_bank_to_batch" ${q.tier === "tier1_bank_to_batch" ? "selected" : ""}>1 · bank → payout</option>
+      <option value="tier2_line_to_order" ${q.tier === "tier2_line_to_order" ? "selected" : ""}>2 · line → order</option>
+      <option value="tier3_reversal_to_payment" ${q.tier === "tier3_reversal_to_payment" ? "selected" : ""}>3 · reversal → payment</option>
+    </select>
+    <label>Decided by</label>
+    <select id="fDecider">
+      <option value="">all</option>
+      <option value="rule" ${q.decided_by === "rule" ? "selected" : ""}>rule</option>
+      <option value="model" ${q.decided_by === "model" ? "selected" : ""}>model</option>
+      <option value="human" ${q.decided_by === "human" ? "selected" : ""}>human</option>
+    </select>
+    <input id="fQ" placeholder="search an id…" value="${esc(q.q || "")}" style="width:230px">
+    <span class="dim">${num(d.total)} links</span>
+  </div>`;
+
+  h += `<div class="panel"><div class="body scroll" style="padding:0"><table><thead><tr>
+    <th>Rule</th><th>By</th><th class="num">Conf</th><th>Left</th><th>Right</th><th class="num">Amount</th><th>Evidence</th>
+    </tr></thead><tbody>`;
+  for (const m of d.items) {
+    h += `<tr>
+      <td class="mono">${esc(m.rule_id)}</td>
+      <td>${decidedPill(m.decided_by)}</td>
+      <td class="num">${(m.confidence / 10).toFixed(0)}%</td>
+      <td class="mono">${esc(m.left_id)}<div class="dim" style="font-size:10px">${esc(m.left_kind)}</div></td>
+      <td class="mono">${esc(m.right_id)}<div class="dim" style="font-size:10px">${esc(m.right_kind)}</div></td>
+      <td class="num">${inr(m.amount_paise, { noPaise: true })}</td>
+      <td style="max-width:340px"><details class="ev"><summary>${esc(m.evidence.reason || "show")}</summary>
+        <pre class="json">${esc(JSON.stringify(m.evidence, null, 2))}</pre></details></td>
+    </tr>`;
+  }
+  if (!d.items.length) h += `<tr><td colspan="7"><div class="empty">No matches for these filters.</div></td></tr>`;
+  h += `</tbody></table></div></div>`;
+  return h;
+}
+
+async function viewExceptions() {
+  const q = S.cache.excQ || {};
+  const params = new URLSearchParams({ limit: "300" });
+  if (q.code) params.set("code", q.code);
+  if (q.status) params.set("status", q.status);
+  const d = await api("/api/exceptions?" + params);
+
+  let h = `<div class="head"><h2>Exception queue</h2>
+    <p>What the run could not close, grouped by why. A model's proposed explanation appears here with the
+       verifier's verdict beside it — including the ones the verifier threw out, because an analyst picking this up
+       should see what was tried and why it did not hold.</p></div>`;
+
+  h += `<div class="filters"><label>Code</label><select id="eCode"><option value="">all</option>`;
+  for (const e of S.summary.exceptions_by_code) {
+    h += `<option value="${esc(e.code)}" ${q.code === e.code ? "selected" : ""}>${esc(e.code)} (${e.open + e.resolved})</option>`;
+  }
+  h += `</select><label>Status</label><select id="eStatus">
+      <option value="">all</option>
+      <option value="open" ${q.status === "open" ? "selected" : ""}>open</option>
+      <option value="ai_rejected" ${q.status === "ai_rejected" ? "selected" : ""}>verifier rejected</option>
+      <option value="ai_resolved" ${q.status === "ai_resolved" ? "selected" : ""}>model resolved</option>
+      <option value="auto_resolved" ${q.status === "auto_resolved" ? "selected" : ""}>auto resolved</option>
+      <option value="rolled_forward" ${q.status === "rolled_forward" ? "selected" : ""}>rolled forward</option>
+    </select><span class="dim">${num(d.total)} · ${inr(d.total_value_paise, { noPaise: true })}</span></div>`;
+
+  h += `<div class="panel"><div class="body scroll" style="padding:0"><table><thead><tr>
+    <th>Code</th><th>Status</th><th>Subject</th><th class="num">Impact</th><th>What happened</th><th></th>
+    </tr></thead><tbody>`;
+  for (const e of d.items) {
+    const p = e.proposal;
+    let detail = `<div>${esc(e.summary)}</div>`;
+    if (p) {
+      const ok = e.verifier_verdict === "accepted";
+      detail += `<div style="margin-top:7px;padding:8px 10px;background:var(--panel-2);border-radius:6px;border-left:2px solid ${ok ? "var(--good)" : "var(--bad)"}">
+        <div style="font-size:11px" class="dim">PROPOSED BY ${esc(p.produced_by)}</div>
+        <div style="margin:3px 0 5px">${esc(p.reasoning || "")}</div>
+        <div class="mono" style="font-size:11px">${p.components.map(c => `${esc(c.ref)} ${inr(c.amount_paise, { noPaise: true })}`).join(" + ")} = ${inr(p.target_paise, { noPaise: true })}</div>
+        <div style="margin-top:5px"><span class="pill ${ok ? "ok" : "open"}">verifier: ${esc(e.verifier_verdict)}</span>
+          <span class="dim" style="font-size:11px"> ${esc(e.verifier_reason || "")}</span></div>
+      </div>`;
+    } else if (e.verifier_reason) {
+      detail += `<div class="dim" style="font-size:11.5px;margin-top:5px">${esc(e.verifier_verdict)}: ${esc(e.verifier_reason)}</div>`;
+    }
+    detail += `<details class="ev"><summary>evidence</summary><pre class="json">${esc(JSON.stringify(e.evidence, null, 2))}</pre></details>`;
+
+    h += `<tr>
+      <td class="mono">${esc(e.code)}</td>
+      <td>${statusPill(e.status)}</td>
+      <td class="mono">${esc(e.subject_id)}<div class="dim" style="font-size:10px">${esc(e.subject_kind)}</div></td>
+      <td class="num">${e.residual_paise ? inr(e.residual_paise, { noPaise: true }) : "—"}</td>
+      <td style="max-width:520px">${detail}</td>
+      <td style="white-space:nowrap">
+        <button class="act" data-acc="${e.id}">Accept</button>
+        <button class="act" data-rej="${e.id}">Reject</button></td>
+    </tr>`;
+  }
+  if (!d.items.length) h += `<tr><td colspan="6"><div class="empty">Nothing here — all closed.</div></td></tr>`;
+  h += `</tbody></table></div></div>`;
+  return h;
+}
+
+async function viewAsk() {
+  let h = `<div class="head"><h2>Ask</h2>
+    <p>Common finance questions are answered by parameterised queries with no model involved. Anything else is
+       turned into a single read-only SELECT by a model, if one is configured — and the SQL is shown alongside the
+       answer, because a number you cannot check is not an answer.</p></div>`;
+
+  h += `<div class="panel"><div class="body">
+    <div style="display:flex;gap:8px">
+      <input id="qBox" placeholder="Why was my payout short?" style="flex:1" value="${esc(S.cache.lastQ || "")}">
+      <button class="act primary" id="qGo">Ask</button>
+    </div>
+    <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">`;
+  for (const s of ["Why was my payout short?", "What is still open?", "How much is on risk hold?",
+                   "Tell me about chargebacks", "What did fees cost me?", "How much did we reconcile overall?"]) {
+    h += `<button class="act" data-sug="${esc(s)}" style="font-size:11.5px">${esc(s)}</button>`;
+  }
+  h += `</div></div></div><div id="qOut"></div>`;
+  return h;
+}
+
+function renderAnswer(a) {
+  let h = `<div class="panel"><h3>Answer <span class="note">${esc(a.source)}</span></h3><div class="body">
+    <div style="font-size:14.5px;margin-bottom:${a.rows.length ? "12px" : "0"}">${esc(a.answer)}</div>`;
+  if (a.sql) h += `<pre class="json">${esc(a.sql)}</pre>`;
+  if (a.rows.length) {
+    const cols = Object.keys(a.rows[0]);
+    h += `<div class="scroll"><table><thead><tr>${cols.map(c => `<th>${esc(c)}</th>`).join("")}</tr></thead><tbody>`;
+    for (const r of a.rows.slice(0, 100)) {
+      h += `<tr>${cols.map(c => `<td class="mono">${esc(r[c])}</td>`).join("")}</tr>`;
+    }
+    h += `</tbody></table></div>`;
+  }
+  h += `</div></div>`;
+  return h;
+}
+
+async function viewAudit() {
+  const q = S.cache.auditQ || {};
+  const params = new URLSearchParams({ limit: "400" });
+  if (q.stage) params.set("stage", q.stage);
+  if (q.decided_by) params.set("decided_by", q.decided_by);
+  const d = await api("/api/audit?" + params);
+
+  let h = `<div class="head"><h2>Audit trail</h2>
+    <p>Append-only. Every decision the run made, in the order it made them, with who decided and what the verifier
+       said. Model decisions carry a prompt hash so the exact input that produced them can be recovered.</p></div>`;
+
+  h += `<div class="filters"><label>Stage</label><select id="aStage"><option value="">all</option>`;
+  for (const s of ["ingest", "tier1_bank_to_batch", "tier2_line_to_order", "tier3_reversal_to_payment", "triage", "exception", "human_review"]) {
+    h += `<option value="${s}" ${q.stage === s ? "selected" : ""}>${s}</option>`;
+  }
+  h += `</select><label>By</label><select id="aBy"><option value="">all</option>
+      <option value="rule" ${q.decided_by === "rule" ? "selected" : ""}>rule</option>
+      <option value="model" ${q.decided_by === "model" ? "selected" : ""}>model</option>
+      <option value="human" ${q.decided_by === "human" ? "selected" : ""}>human</option>
+    </select><span class="dim">${num(d.total)} entries</span></div>`;
+
+  h += `<div class="panel"><div class="body scroll" style="padding:0"><table><thead><tr>
+    <th class="num">#</th><th>Stage</th><th>Subject</th><th>Decision</th><th>By</th><th>Decider</th><th>Verifier</th>
+    </tr></thead><tbody>`;
+  for (const a of d.items) {
+    h += `<tr><td class="num">${a.seq}</td><td class="mono">${esc(a.stage)}</td>
+      <td class="mono">${esc(a.subject_id)}</td><td>${esc(a.decision)}</td>
+      <td>${decidedPill(a.decided_by)}</td><td class="mono" style="max-width:210px;overflow:hidden;text-overflow:ellipsis">${esc(a.decider_ref)}</td>
+      <td class="mono">${esc(a.verifier_result || "—")}</td></tr>`;
+  }
+  h += `</tbody></table></div></div>`;
+  return h;
+}
+
+// ---------- wiring ----------
+const RENDER = {
+  overview: viewOverview, unnetting: viewUnnetting, matches: viewMatches,
+  exceptions: viewExceptions, ask: viewAsk, audit: viewAudit,
+};
+
+function bind() {
+  const on = (id, ev, fn) => { const n = document.getElementById(id); if (n) n.addEventListener(ev, fn); };
+
+  on("batchSel", "change", e => { S.batch = +e.target.value; render(); });
+
+  const mq = () => { S.cache.matchQ = {
+    tier: document.getElementById("fTier").value,
+    decided_by: document.getElementById("fDecider").value,
+    q: document.getElementById("fQ").value.trim(),
+  }; render(); };
+  on("fTier", "change", mq); on("fDecider", "change", mq);
+  on("fQ", "keydown", e => { if (e.key === "Enter") mq(); });
+
+  const eq = () => { S.cache.excQ = {
+    code: document.getElementById("eCode").value,
+    status: document.getElementById("eStatus").value,
+  }; render(); };
+  on("eCode", "change", eq); on("eStatus", "change", eq);
+
+  const aq = () => { S.cache.auditQ = {
+    stage: document.getElementById("aStage").value,
+    decided_by: document.getElementById("aBy").value,
+  }; render(); };
+  on("aStage", "change", aq); on("aBy", "change", aq);
+
+  document.querySelectorAll("[data-acc],[data-rej]").forEach(b => {
+    b.addEventListener("click", async () => {
+      const accept = b.hasAttribute("data-acc");
+      const id = b.getAttribute(accept ? "data-acc" : "data-rej");
+      await api(`/api/exceptions/${id}/decision`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accept, note: "reviewed in dashboard" }),
+      });
+      S.summary = await api("/api/summary");
+      render();
+    });
+  });
+
+  const ask = async (text) => {
+    S.cache.lastQ = text;
+    const box = document.getElementById("qBox"); if (box) box.value = text;
+    document.getElementById("qOut").innerHTML = `<div class="empty">Thinking…</div>`;
+    const a = await api("/api/ask", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question: text }),
+    });
+    document.getElementById("qOut").innerHTML = renderAnswer(a);
+  };
+  on("qGo", "click", () => ask(document.getElementById("qBox").value));
+  on("qBox", "keydown", e => { if (e.key === "Enter") ask(e.target.value); });
+  document.querySelectorAll("[data-sug]").forEach(b =>
+    b.addEventListener("click", () => ask(b.getAttribute("data-sug"))));
+}
+
+async function render() {
+  document.getElementById("nav").innerHTML = VIEWS.map(([k, ic, label]) =>
+    `<button data-v="${k}" class="${S.view === k ? "on" : ""}"><span class="ic">${ic}</span>${label}</button>`).join("");
+  document.querySelectorAll("[data-v]").forEach(b =>
+    b.addEventListener("click", () => { S.view = b.getAttribute("data-v"); render(); }));
+
+  const main = document.getElementById("main");
+  try {
+    main.innerHTML = await RENDER[S.view]();
+    bind();
+  } catch (err) {
+    main.innerHTML = `<div class="empty">${esc(err.message || err)}</div>`;
+  }
+}
+
+(async function boot() {
+  try {
+    S.summary = await api("/api/summary");
+  } catch {
+    document.getElementById("main").innerHTML =
+      `<div class="empty">No run found. Run <span class="mono">make recon</span> first, then reload.</div>`;
+    return;
+  }
+  const r = S.summary.run;
+  document.getElementById("foot").innerHTML =
+    `run ${esc(r.run_id)}<br>${num(r.orders_count)} orders<br>${num(r.settlement_lines_count)} lines<br>${num(r.bank_txns_count)} bank rows`;
+  render();
+})();
+</script>
+</body>
+</html>
