@@ -14,6 +14,7 @@ reason a model is safe to use here: it proposes, the parser disposes.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Iterable, Optional
@@ -50,7 +51,10 @@ REQUIRED_FIELDS: dict[str, set[str]] = {
     SourceKind.MERCHANT_LEDGER: {"order_id", "gross", "captured_at"},
     SourceKind.SETTLEMENT_RECON: {"entity_id", "type", "amount", "settlement_id"},
     SourceKind.SETTLEMENTS: {"settlement_id", "amount"},
-    SourceKind.BANK_STATEMENT: {"narration", "value_date"},
+    # A statement with no credit column cannot show a payout arriving, so
+    # reading one without it is not a partial success — it silently reconciles
+    # nothing and reports every payout as missing.
+    SourceKind.BANK_STATEMENT: {"narration", "value_date", "credit"},
 }
 
 OPTIONAL_FIELDS: dict[str, set[str]] = {
@@ -111,14 +115,28 @@ ALIASES: dict[str, dict[str, list[str]]] = {
         "created_at": ["created_at", "created at"],
         "settled_at": ["settled_at", "settled at", "settlement date"],
     },
+    # Indian bank statement exports vary more than any other source here, so
+    # this list is the widest. Being generous costs nothing: a header that
+    # resolves by alias is one that never needs a model call.
     SourceKind.BANK_STATEMENT: {
-        "txn_date": ["txn date", "transaction date", "date", "post date"],
+        "txn_date": ["txn date", "transaction date", "date", "post date", "tran date"],
         "value_date": ["value date", "value dt", "val date", "date"],
-        "narration": ["description", "narration", "particulars", "remarks", "details"],
-        "bank_ref": ["chq/ref no", "ref no", "reference", "cheque no", "utr no", "bank ref"],
-        "debit": ["debit", "withdrawal", "dr", "withdrawal amt"],
-        "credit": ["credit", "deposit", "cr", "deposit amt"],
-        "balance": ["balance", "closing balance", "running balance"],
+        "narration": [
+            "description", "narration", "particulars", "remarks", "details", "narrative",
+        ],
+        "bank_ref": [
+            "chq/ref no", "ref no", "reference", "cheque no", "utr no", "bank ref",
+            "instrument id", "instrument no", "tran id", "transaction id", "ref/chq no",
+        ],
+        "debit": [
+            "debit", "withdrawal", "dr", "withdrawal amt", "money out", "paid out",
+            "debit amount",
+        ],
+        "credit": [
+            "credit", "deposit", "cr", "deposit amt", "money in", "paid in",
+            "credit amount",
+        ],
+        "balance": ["balance", "closing balance", "running balance", "closing bal"],
     },
 }
 
@@ -162,7 +180,15 @@ class ValidationReport:
 
 
 def _norm(header: str) -> str:
-    return header.strip().lower().replace("_", " ").replace("-", " ")
+    """Normalise a header for alias lookup.
+
+    Punctuation and repeated whitespace are stripped, so ``"Withdrawal Amt."``
+    and ``"withdrawal_amt"`` both reach the same alias. Failing to do this made
+    a trailing full stop look like an unknown bank format.
+    """
+    text = header.strip().lower()
+    text = re.sub(r"[^a-z0-9]+", " ", text)
+    return " ".join(text.split())
 
 
 def heuristic_map(headers: Iterable[str], source_kind: str) -> MappingSpec:

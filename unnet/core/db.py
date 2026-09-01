@@ -30,7 +30,12 @@ def make_engine(db_path: Path | str = DEFAULT_DB_PATH, *, echo: bool = False):
 
 @contextmanager
 def session_scope(engine) -> Iterator[Session]:
-    session = Session(engine)
+    # expire_on_commit=False keeps the in-memory objects usable after the
+    # commit. The engine builds a whole run in memory, persists it, and then
+    # reports on it; with the default the reporting step would re-query every
+    # attribute it touches, and any object read after the session closed would
+    # raise DetachedInstanceError instead.
+    session = Session(engine, expire_on_commit=False)
     try:
         yield session
         session.commit()

@@ -1,0 +1,225 @@
+"""Model access: one interface, free-tier providers, and a way to run with none.
+
+Three things this has to survive, in order of how often they happen:
+
+1. **No API key at all.** A reviewer clones the repo and runs ``make demo``.
+   Cassette replay serves recorded responses so the published numbers reproduce
+   byte for byte with no account and no network.
+2. **Free-tier rate limits.** Gemini and Groq both return 429 under load. A
+   reconciliation run that dies two thirds of the way through because a free
+   quota ran out is worse than one that finishes on rules alone, so the circuit
+   breaker trips and the run degrades instead of failing.
+3. **A model returning nonsense.** Handled downstream by the verifier, not here.
+   This layer's only job is to return parsed JSON or admit it could not.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import time
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Optional, Protocol
+
+CASSETTE_DIR = Path(os.environ.get("UNNET_CASSETTES", "data/cassettes"))
+
+
+class LLMUnavailable(RuntimeError):
+    """Raised when no model can serve a request. Callers degrade, not crash."""
+
+
+@dataclass
+class LLMResponse:
+    data: dict[str, Any]
+    source: str  # "cassette" | "gemini" | "groq"
+    model: str
+    prompt_hash: str
+    latency_ms: int = 0
+
+    @property
+    def decider_ref(self) -> str:
+        """Identifier recorded in the audit trail.
+
+        The prompt hash is included so a decision can be traced back to the
+        exact input that produced it — a model name alone is not reproducible.
+        """
+        return f"{self.source}:{self.model}:{self.prompt_hash[:12]}"
+
+
+class Backend(Protocol):
+    name: str
+    model: str
+
+    def complete(self, prompt: str, schema: dict) -> dict: ...
+
+
+def prompt_hash(task: str, prompt: str) -> str:
+    return hashlib.sha256(f"{task}\n{prompt}".encode()).hexdigest()
+
+
+class CassetteStore:
+    """Recorded responses, keyed by task and prompt hash.
+
+    Committed to the repo so the published metrics are reproducible offline.
+    A cassette is a record of what a model actually returned — never a
+    hand-written answer, which would make the metrics a work of fiction.
+    """
+
+    def __init__(self, directory: Path = CASSETTE_DIR) -> None:
+        self.directory = Path(directory)
+
+    def path_for(self, task: str, digest: str) -> Path:
+        return self.directory / task / f"{digest[:32]}.json"
+
+    def load(self, task: str, digest: str) -> Optional[dict]:
+        path = self.path_for(task, digest)
+        if not path.exists():
+            return None
+        try:
+            return json.loads(path.read_text())
+        except json.JSONDecodeError:
+            return None
+
+    def save(self, task: str, digest: str, payload: dict, meta: dict) -> None:
+        path = self.path_for(task, digest)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"meta": meta, "data": payload}, indent=2))
+
+    def count(self) -> int:
+        return len(list(self.directory.rglob("*.json"))) if self.directory.exists() else 0
+
+
+@dataclass
+class LLMClient:
+    """What the agents actually talk to."""
+
+    backends: list[Backend] = field(default_factory=list)
+    cassettes: CassetteStore = field(default_factory=CassetteStore)
+    record: bool = False
+    #: Consecutive failures before this run stops trying.
+    breaker_threshold: int = 3
+
+    calls: int = 0
+    cassette_hits: int = 0
+    live_calls: int = 0
+    failures: int = 0
+    _consecutive_failures: int = 0
+    degraded: bool = False
+    degraded_reason: str = ""
+
+    def complete(self, task: str, prompt: str, schema: dict) -> LLMResponse:
+        """Serve from cassette, else from a live backend, else give up cleanly."""
+        self.calls += 1
+        digest = prompt_hash(task, prompt)
+
+        cached = self.cassettes.load(task, digest)
+        if cached is not None:
+            self.cassette_hits += 1
+            meta = cached.get("meta", {})
+            return LLMResponse(
+                data=cached.get("data", {}),
+                source="cassette",
+                model=meta.get("model", "recorded"),
+                prompt_hash=digest,
+            )
+
+        if self.degraded:
+            raise LLMUnavailable(self.degraded_reason)
+
+        if not self.backends:
+            raise LLMUnavailable(
+                "No cassette for this prompt and no API key configured. "
+                "Set GEMINI_API_KEY or GROQ_API_KEY, or run `make record`."
+            )
+
+        last_error: Exception | None = None
+        for backend in self.backends:
+            started = time.perf_counter()
+            try:
+                data = backend.complete(prompt, schema)
+            except Exception as exc:  # noqa: BLE001 - any backend failure is a fallback
+                last_error = exc
+                self.failures += 1
+                continue
+
+            latency_ms = int((time.perf_counter() - started) * 1000)
+            self.live_calls += 1
+            self._consecutive_failures = 0
+
+            if self.record:
+                self.cassettes.save(
+                    task,
+                    digest,
+                    data,
+                    {
+                        "model": backend.model,
+                        "backend": backend.name,
+                        "task": task,
+                        "latency_ms": latency_ms,
+                    },
+                )
+
+            return LLMResponse(
+                data=data,
+                source=backend.name,
+                model=backend.model,
+                prompt_hash=digest,
+                latency_ms=latency_ms,
+            )
+
+        # Every backend failed for this prompt.
+        self._consecutive_failures += 1
+        if self._consecutive_failures >= self.breaker_threshold:
+            self.degraded = True
+            self.degraded_reason = (
+                f"Circuit breaker tripped after {self._consecutive_failures} consecutive "
+                f"failures; continuing on rules only. Last error: {last_error}"
+            )
+        raise LLMUnavailable(str(last_error) or "all backends failed")
+
+    def stats(self) -> dict:
+        return {
+            "calls": self.calls,
+            "cassette_hits": self.cassette_hits,
+            "live_calls": self.live_calls,
+            "failures": self.failures,
+            "degraded": self.degraded,
+            "degraded_reason": self.degraded_reason,
+        }
+
+
+def build_client(
+    *,
+    provider: str | None = None,
+    record: bool | None = None,
+    cassette_dir: Path | None = None,
+) -> LLMClient:
+    """Assemble a client from the environment.
+
+    ``offline`` means cassettes only — the default, so nothing in this repo
+    reaches the network unless someone asks it to.
+    """
+    provider = (provider or os.environ.get("UNNET_LLM_PROVIDER", "offline")).lower()
+    record = record if record is not None else os.environ.get("UNNET_LLM_RECORD") == "1"
+    store = CassetteStore(cassette_dir or CASSETTE_DIR)
+
+    backends: list[Backend] = []
+    # Order is the fallback order. A local server is tried first when asked for
+    # explicitly, since it costs nothing and has no quota to exhaust.
+    if provider in {"local", "auto"}:
+        from unnet.llm.local import LocalBackend
+
+        if provider == "local" or os.environ.get("UNNET_LOCAL_BASE_URL"):
+            backends.append(LocalBackend())
+    if provider in {"gemini", "auto"} and os.environ.get("GEMINI_API_KEY"):
+        from unnet.llm.gemini import GeminiBackend
+
+        backends.append(GeminiBackend())
+    if provider in {"groq", "auto"} and os.environ.get("GROQ_API_KEY"):
+        from unnet.llm.groq import GroqBackend
+
+        backends.append(GroqBackend())
+
+    return LLMClient(backends=backends, cassettes=store, record=record)

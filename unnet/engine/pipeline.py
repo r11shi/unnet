@@ -9,6 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+from unnet.agents import resolvers
 from unnet.core.db import AuditLog
 from unnet.core.models import DecidedBy, ExceptionStatus, Run
 from unnet.engine import netting, tier1, tier2, tier3
@@ -50,19 +51,29 @@ def reconcile(
     audit: Optional[AuditLog] = None,
     ai_enabled: bool = True,
     label: str = "",
-    mapper=None,
+    llm_client=None,
 ) -> ReconResult:
     """Run one pass.
 
-    ``mapper`` is the optional model-backed schema mapper. When it is ``None``
-    the pipeline is pure rules, which is exactly what the ablation baseline
-    needs — the two runs differ only by what is passed in here.
+    With ``ai_enabled=False`` no agent is constructed and no model is consulted,
+    which is exactly what the ablation baseline needs: the two runs differ only
+    by this flag, so any difference in the numbers is attributable to the model
+    layer and nothing else.
     """
     run_id = run_id or uuid.uuid4().hex[:12]
     started = time.perf_counter()
 
     ctx = ReconContext(run_id=run_id, audit=audit, ai_enabled=ai_enabled)
     specs: dict[str, MappingSpec] = {}
+
+    mapper = None
+    triage_agent = None
+    if ai_enabled and llm_client is not None:
+        from unnet.agents.mapper import ModelSchemaMapper
+        from unnet.agents.triage import TriageAgent
+
+        mapper = ModelSchemaMapper(llm_client)
+        triage_agent = TriageAgent(llm_client)
 
     sources = [
         (SourceKind.MERCHANT_LEDGER, paths.merchant_ledger),
@@ -128,10 +139,39 @@ def reconcile(
     tier1.run(ctx)
     tier2.run(ctx)
     tier3.run(ctx)
+
+    # Exact search runs before any model is consulted. If arithmetic can close
+    # an exception, arithmetic closes it.
+    resolvers.subset_sum_resolve(ctx)
+
+    # Only now, on what is left, is a model worth the call.
+    if triage_agent is not None:
+        triage_agent.run(ctx)
+
     netting_result = netting.run(ctx)
 
     duration_ms = int((time.perf_counter() - started) * 1000)
     run = _summarise(ctx, netting_result, duration_ms, ai_enabled=ai_enabled, label=label)
+
+    if llm_client is not None:
+        stats = llm_client.stats()
+        run.llm_calls = stats["calls"]
+        run.llm_degraded = stats["degraded"]
+        run.notes = {
+            **run.notes,
+            "llm": stats,
+            "triage": (
+                {
+                    "attempted": triage_agent.attempted,
+                    "proposed": triage_agent.proposed,
+                    "accepted": triage_agent.accepted,
+                    "rejected_by_verifier": triage_agent.rejected,
+                }
+                if triage_agent
+                else {}
+            ),
+        }
+
     return ReconResult(ctx=ctx, run=run, netting=netting_result, specs=specs)
 
 

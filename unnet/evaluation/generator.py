@@ -70,6 +70,12 @@ class DefectRates:
     dispute_rate: float = 0.012
     #: Collapse one adjacent pair of payouts into a single bank credit.
     consolidated_credit: bool = True
+    #: Fraction of payment lines the gateway reports with no payment_id and no
+    #: order_id. Razorpay's recon report genuinely leaves these blank for some
+    #: entities, and plenty of merchants export books with no gateway id at all.
+    #: Raising this forces tier 2 off exact identifiers and onto amount, method
+    #: and time — which is where a matching engine's real precision shows.
+    missing_gateway_ids: float = 0.0
 
 
 @dataclass
@@ -81,6 +87,20 @@ class GeneratorConfig:
     merchant_name: str = "Kirana Katalog Pvt Ltd"
     out_dir: Path = Path("data/synthetic")
     defects: DefectRates = field(default_factory=DefectRates)
+    #: "standard" — clean identifiers, headers the alias table knows.
+    #: "messy"    — gateway ids missing on a third of lines, and a bank export
+    #:              whose headers no alias table has seen.
+    profile: str = "standard"
+
+    @classmethod
+    def messy(cls, **overrides) -> "GeneratorConfig":
+        config = cls(
+            profile="messy",
+            out_dir=Path("data/synthetic_messy"),
+            defects=DefectRates(missing_gateway_ids=0.35),
+            **overrides,
+        )
+        return config
 
 
 @dataclass
@@ -867,6 +887,13 @@ def _write_files(cfg, ledger_rows, lines, batches, bank_rows, truth: GroundTruth
         rng = random.Random(cfg.seed + 1)
         for line in lines:
             is_card = line["method"] == "card"
+            # In the messy profile the gateway reports some payment lines with
+            # no ids at all, so the only way back to an order is amount, method
+            # and time.
+            blank_ids = (
+                line["type"] == "payment"
+                and rng.random() < cfg.defects.missing_gateway_ids
+            )
             writer.writerow(
                 {
                     "entity_id": line["entity_id"],
@@ -888,8 +915,8 @@ def _write_files(cfg, ledger_rows, lines, batches, bank_rows, truth: GroundTruth
                     "settlement_id": line["settlement_id"] or "",
                     "settlement_utr": line["settlement_utr"] or "",
                     "credit_type": "default",
-                    "payment_id": line["payment_id"] or "",
-                    "order_id": line["order_id"] or "",
+                    "payment_id": "" if blank_ids else (line["payment_id"] or ""),
+                    "order_id": "" if blank_ids else (line["order_id"] or ""),
                     "dispute_id": line["dispute_id"] or "",
                     "method": line["method"],
                     "card_network": rng.choice(CARD_NETWORKS) if is_card else "",
@@ -918,23 +945,40 @@ def _write_files(cfg, ledger_rows, lines, batches, bank_rows, truth: GroundTruth
             )
 
     # The bank: DD/MM/YY, Dr/Cr columns, everything interesting inside prose.
+    # The messy profile uses a second bank's layout, whose headers no alias
+    # table has seen. This is what the schema-mapping agent is for — and it is
+    # a fair test only because these headers are genuinely not in ALIASES.
+    messy = cfg.profile == "messy"
+    bank_headers = (
+        [
+            "Sl No.",
+            "Tran Date",
+            "Value Dt",
+            "Remarks",
+            "Instrument ID",
+            "Withdrawal Amt.",
+            "Deposit Amt.",
+            "Closing Bal",
+        ]
+        if messy
+        else ["Txn Date", "Value Date", "Description", "Chq/Ref No", "Debit", "Credit", "Balance"]
+    )
+    date_fmt = "%d-%b-%Y" if messy else "%d/%m/%y"
+
     with (out / "bank_statement.csv").open("w", newline="") as fh:
         writer = csv.writer(fh)
-        writer.writerow(
-            ["Txn Date", "Value Date", "Description", "Chq/Ref No", "Debit", "Credit", "Balance"]
-        )
-        for row in bank_rows:
-            writer.writerow(
-                [
-                    row["value_date"].strftime("%d/%m/%y"),
-                    row["value_date"].strftime("%d/%m/%y"),
-                    row["narration"],
-                    row["bank_ref"],
-                    f"{paise_to_rupees(row['debit']):,}" if row["debit"] else "",
-                    f"{paise_to_rupees(row['credit']):,}" if row["credit"] else "",
-                    f"{paise_to_rupees(row['balance']):,}",
-                ]
-            )
+        writer.writerow(bank_headers)
+        for index, row in enumerate(bank_rows, start=1):
+            values = [
+                row["value_date"].strftime(date_fmt),
+                row["value_date"].strftime(date_fmt),
+                row["narration"],
+                row["bank_ref"],
+                f"{paise_to_rupees(row['debit']):,}" if row["debit"] else "",
+                f"{paise_to_rupees(row['credit']):,}" if row["credit"] else "",
+                f"{paise_to_rupees(row['balance']):,}",
+            ]
+            writer.writerow([index] + values if messy else values)
 
     with (out / "ground_truth.json").open("w") as fh:
         json.dump(asdict(truth), fh, indent=2, default=str)
