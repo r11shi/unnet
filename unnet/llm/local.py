@@ -40,6 +40,7 @@ class LocalBackend:
         # Ollama and LM Studio need a real one.
         self.model = model or os.environ.get("UNNET_LOCAL_MODEL", "local-model")
         self.timeout = timeout
+        self.last_tokens = 0
 
     def complete(self, prompt: str, schema: dict) -> dict:
         payload = {

@@ -14,15 +14,22 @@ import os
 import httpx
 
 ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+LIST_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models"
+
+#: Google retires models for *new* keys while still listing them, so a name that
+#: works on one account 404s on another with a message naming its replacement.
+#: Verified working on a fresh free-tier key in Sept 2026.
+DEFAULT_MODEL = "gemini-3.6-flash"
 
 
 class GeminiBackend:
     name = "gemini"
 
     def __init__(self, model: str | None = None, timeout: float = 45.0) -> None:
-        self.model = model or os.environ.get("UNNET_GEMINI_MODEL", "gemini-2.0-flash")
+        self.model = model or os.environ.get("UNNET_GEMINI_MODEL", DEFAULT_MODEL)
         self.api_key = os.environ.get("GEMINI_API_KEY", "")
         self.timeout = timeout
+        self.last_tokens = 0
 
     def complete(self, prompt: str, schema: dict) -> dict:
         if not self.api_key:
@@ -45,6 +52,8 @@ class GeminiBackend:
             json=payload,
             timeout=self.timeout,
         )
+        if response.status_code == 404:
+            raise RuntimeError(self._retirement_hint(response))
         response.raise_for_status()
         body = response.json()
 
@@ -53,7 +62,27 @@ class GeminiBackend:
         except (KeyError, IndexError) as exc:
             raise RuntimeError(f"Unexpected Gemini response shape: {body}") from exc
 
+        usage = body.get("usageMetadata") or {}
+        self.last_tokens = int(usage.get("totalTokenCount") or 0)
         return json.loads(text)
+
+    def _retirement_hint(self, response) -> str:
+        """Turn Google's model-retirement 404 into something actionable.
+
+        Google keeps retired models in the ``models`` listing but refuses them
+        for keys created after the cutoff, so the failure looks like a typo
+        rather than a retirement. The error body names the replacement; surface
+        it instead of a bare 404.
+        """
+        try:
+            message = response.json()["error"]["message"]
+        except Exception:  # noqa: BLE001 - fall back to the raw body
+            message = response.text[:300]
+        return (
+            f"Gemini rejected model '{self.model}': {message} "
+            f"Set UNNET_GEMINI_MODEL to a model your key can use "
+            f"(default here is {DEFAULT_MODEL})."
+        )
 
 
 def _to_gemini_schema(schema: dict) -> dict:

@@ -21,7 +21,9 @@ from __future__ import annotations
 
 import json
 
-from unnet.agents.verifier import Component, Proposal, verify
+from unnet.agents.resolvers import make_lookup
+from unnet.agents.untrusted import scrub_evidence
+from unnet.agents.verifier import Component, Proposal, Verdict, verify
 from unnet.core.models import DecidedBy, ExceptionCode, ExceptionStatus
 from unnet.engine.context import ReconContext
 from unnet.llm.provider import LLMClient, LLMUnavailable
@@ -97,6 +99,7 @@ class TriageAgent:
         self.attempted = 0
         self.proposed = 0
         self.accepted = 0
+        self.hypotheses = 0
         self.rejected = 0
 
     def run(self, ctx: ReconContext, *, limit: int = 25) -> int:
@@ -126,7 +129,7 @@ class TriageAgent:
             code=exception.code.value,
             summary=exception.summary,
             target_paise=target,
-            evidence=json.dumps(exception.evidence, indent=2, default=str),
+            evidence=json.dumps(scrub_evidence(exception.evidence), indent=2, default=str),
             candidates=json.dumps(
                 [
                     {
@@ -181,6 +184,7 @@ class TriageAgent:
             proposal,
             known_refs=known_refs,
             already_matched=ctx.claimed["settlement_batch"],
+            lookup=make_lookup(ctx),
         )
 
         exception.proposal = {
@@ -202,8 +206,17 @@ class TriageAgent:
         exception.verifier_reason = result.reason
 
         if result.accepted:
+            # Every component traced back to a ledger row. Safe to close.
             exception.status = ExceptionStatus.AI_RESOLVED
             self.accepted += 1
+        elif result.verdict is Verdict.HYPOTHESIS:
+            # The arithmetic works but the explanation rests on something we
+            # cannot evidence — typically an invented bank charge. This is the
+            # common case for a residual, and it is genuinely useful: a human
+            # gets a specific, checkable starting point instead of a bare
+            # number. It is not a resolution and is never counted as one.
+            exception.status = ExceptionStatus.AI_HYPOTHESIS
+            self.hypotheses += 1
         else:
             # Stays in the queue. A rejected proposal is kept, not discarded:
             # the analyst who picks this up should see what was tried and why

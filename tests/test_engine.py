@@ -185,7 +185,7 @@ def test_a_consolidated_credit_is_decomposed_by_exact_search(run):
     assert resolved, "the consolidated-credit fixture should be closed"
 
     exception = resolved[0]
-    assert exception.verifier_verdict == "accepted"
+    assert exception.verifier_verdict == "resolved_verified"
     components = exception.proposal["components"]
     assert len(components) >= 2
     assert sum(c["amount_paise"] for c in components) == exception.proposal["target_paise"]

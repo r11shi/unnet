@@ -23,6 +23,7 @@ class GroqBackend:
         self.model = model or os.environ.get("UNNET_GROQ_MODEL", "llama-3.3-70b-versatile")
         self.api_key = os.environ.get("GROQ_API_KEY", "")
         self.timeout = timeout
+        self.last_tokens = 0
 
     def complete(self, prompt: str, schema: dict) -> dict:
         if not self.api_key:

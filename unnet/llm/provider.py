@@ -51,8 +51,38 @@ class LLMResponse:
 class Backend(Protocol):
     name: str
     model: str
+    #: Tokens used by the most recent call, when the provider reports them.
+    last_tokens: int
 
     def complete(self, prompt: str, schema: dict) -> dict: ...
+
+
+class RateLimiter:
+    """Token bucket, because the free tier is 10 requests per minute.
+
+    Ten RPM is slow enough to be an architectural constraint rather than a
+    footnote: it is why the investigator generates candidates deterministically
+    first and only spends a call where reasoning is actually required. Pacing
+    here beats collecting 429s and tripping the circuit breaker on what is
+    really a queueing problem.
+    """
+
+    def __init__(self, per_minute: int | None = None) -> None:
+        self.per_minute = per_minute or int(os.environ.get("UNNET_LLM_RPM", "10"))
+        self.interval = 60.0 / max(1, self.per_minute)
+        self._last: float = 0.0
+        self.waited_seconds: float = 0.0
+
+    def acquire(self) -> None:
+        if self.per_minute <= 0:
+            return
+        now = time.monotonic()
+        earliest = self._last + self.interval
+        if now < earliest:
+            delay = earliest - now
+            self.waited_seconds += delay
+            time.sleep(delay)
+        self._last = time.monotonic()
 
 
 def prompt_hash(task: str, prompt: str) -> str:
@@ -100,11 +130,13 @@ class LLMClient:
     record: bool = False
     #: Consecutive failures before this run stops trying.
     breaker_threshold: int = 3
+    limiter: RateLimiter = field(default_factory=RateLimiter)
 
     calls: int = 0
     cassette_hits: int = 0
     live_calls: int = 0
     failures: int = 0
+    tokens: int = 0
     _consecutive_failures: int = 0
     degraded: bool = False
     degraded_reason: str = ""
@@ -136,6 +168,9 @@ class LLMClient:
 
         last_error: Exception | None = None
         for backend in self.backends:
+            # Pace before the call, not after a 429, so the free tier is a
+            # queue rather than a failure mode.
+            self.limiter.acquire()
             started = time.perf_counter()
             try:
                 data = backend.complete(prompt, schema)
@@ -147,6 +182,8 @@ class LLMClient:
             latency_ms = int((time.perf_counter() - started) * 1000)
             self.live_calls += 1
             self._consecutive_failures = 0
+            call_tokens = int(getattr(backend, "last_tokens", 0) or 0)
+            self.tokens += call_tokens
 
             if self.record:
                 self.cassettes.save(
@@ -185,6 +222,9 @@ class LLMClient:
             "cassette_hits": self.cassette_hits,
             "live_calls": self.live_calls,
             "failures": self.failures,
+            "tokens": self.tokens,
+            "rate_limit_wait_s": round(self.limiter.waited_seconds, 1),
+            "rpm_cap": self.limiter.per_minute,
             "degraded": self.degraded,
             "degraded_reason": self.degraded_reason,
         }

@@ -1,0 +1,24 @@
+{
+  "meta": {
+    "model": "gemini-3.6-flash",
+    "backend": "gemini",
+    "task": "exception_triage",
+    "latency_ms": 11098
+  },
+  "data": {
+    "components": [
+      {
+        "kind": "bank_charge",
+        "ref": "inward_neft_charge",
+        "amount_paise": 1000
+      },
+      {
+        "kind": "bank_charge",
+        "ref": "gst_on_neft_charge",
+        "amount_paise": 180
+      }
+    ],
+    "reasoning": "The bank credit shortfall of 1180 paise (\u20b911.80) corresponds to an inward NEFT processing charge of \u20b910 (1000 paise) plus 18% GST (180 paise).",
+    "confidence": 95
+  }
+}

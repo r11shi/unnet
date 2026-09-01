@@ -55,8 +55,11 @@ class ExceptionStatus(str, enum.Enum):
     OPEN = "open"
     #: Closed by a deterministic rule with no human or model involvement.
     AUTO_RESOLVED = "auto_resolved"
-    #: The model proposed a decomposition and the verifier accepted the arithmetic.
+    #: Every component traced back to a ledger row. Closed automatically.
     AI_RESOLVED = "ai_resolved"
+    #: Arithmetic holds but rests on something unevidenced. A human decides;
+    #: never counted as a resolution.
+    AI_HYPOTHESIS = "ai_hypothesis"
     #: The model proposed something the verifier rejected. Stays in the queue.
     AI_REJECTED = "ai_rejected"
     #: A timing break, carried into the next run rather than reported as an error.

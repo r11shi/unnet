@@ -3978,115 +3978,122 @@
       "defect": "credit_not_yet_landed"
     },
     {
+      "code": "UNMATCHED_BANK_CREDIT",
+      "subject_kind": "bank_txn",
+      "subject_id": "N932375091321",
+      "residual_paise": 10000,
+      "defect": "prompt_injection_attempt"
+    },
+    {
       "code": "DUPLICATE",
       "subject_kind": "merchant_order",
-      "subject_id": "order_8EYeG27czGAZ3x",
-      "residual_paise": 174600,
+      "subject_id": "order_fk2FS5M7MSimKF",
+      "residual_paise": 1039000,
       "defect": "duplicate_order_row"
     },
     {
       "code": "DUPLICATE",
       "subject_kind": "merchant_order",
-      "subject_id": "order_07gLtzcfaXOORv",
-      "residual_paise": 25900,
+      "subject_id": "order_LJAuy2dW1KsNOy",
+      "residual_paise": 930200,
       "defect": "duplicate_order_row"
     },
     {
       "code": "DUPLICATE",
       "subject_kind": "merchant_order",
-      "subject_id": "order_WkA96vyOLtMG3M",
-      "residual_paise": 390600,
+      "subject_id": "order_UWBLh3a3mV8NaM",
+      "residual_paise": 2821400,
       "defect": "duplicate_order_row"
     },
     {
       "code": "DUPLICATE",
       "subject_kind": "merchant_order",
-      "subject_id": "order_vkjgn5mvfA7k1D",
-      "residual_paise": 4019700,
+      "subject_id": "order_gBZupEPPyaJyUA",
+      "residual_paise": 634400,
       "defect": "duplicate_order_row"
     },
     {
       "code": "DUPLICATE",
       "subject_kind": "merchant_order",
-      "subject_id": "order_14ssJOXyCTdZqG",
-      "residual_paise": 2692700,
+      "subject_id": "order_UWskOwVu4h8nxr",
+      "residual_paise": 31400,
       "defect": "duplicate_order_row"
     },
     {
       "code": "DUPLICATE",
       "subject_kind": "merchant_order",
-      "subject_id": "order_xv8afEP9mXNUXv",
-      "residual_paise": 4406600,
+      "subject_id": "order_0exCnH52OiosD4",
+      "residual_paise": 1030200,
       "defect": "duplicate_order_row"
     },
     {
       "code": "DUPLICATE",
       "subject_kind": "merchant_order",
-      "subject_id": "order_zILN796KRfdZYN",
-      "residual_paise": 32200,
+      "subject_id": "order_rTU2EoJ6bVOopg",
+      "residual_paise": 599600,
       "defect": "duplicate_order_row"
     },
     {
       "code": "DUPLICATE",
       "subject_kind": "merchant_order",
-      "subject_id": "order_KLY6PbYIkaNPnU",
-      "residual_paise": 1338900,
+      "subject_id": "order_4CQCYBnE4QV3Je",
+      "residual_paise": 24900,
       "defect": "duplicate_order_row"
     },
     {
       "code": "DUPLICATE",
       "subject_kind": "merchant_order",
-      "subject_id": "order_TAPdUMtCFOh0AL",
-      "residual_paise": 41700,
+      "subject_id": "order_pYEP3gMtIJAn9e",
+      "residual_paise": 937000,
       "defect": "duplicate_order_row"
     },
     {
       "code": "DUPLICATE",
       "subject_kind": "merchant_order",
-      "subject_id": "order_8nGs9jVPjjUpnj",
-      "residual_paise": 139300,
+      "subject_id": "order_a6Gwz7dHMJ4P0S",
+      "residual_paise": 204400,
       "defect": "duplicate_order_row"
     },
     {
       "code": "DUPLICATE",
       "subject_kind": "merchant_order",
-      "subject_id": "order_rY1MSYkDBFb2hd",
-      "residual_paise": 126000,
+      "subject_id": "order_T7vGWEYba6McB3",
+      "residual_paise": 3970400,
       "defect": "duplicate_order_row"
     },
     {
       "code": "DUPLICATE",
       "subject_kind": "merchant_order",
-      "subject_id": "order_DjW2ExBxYwSR0X",
-      "residual_paise": 349800,
+      "subject_id": "order_J948M1S6NLFy69",
+      "residual_paise": 696700,
       "defect": "duplicate_order_row"
     },
     {
       "code": "DUPLICATE",
       "subject_kind": "merchant_order",
-      "subject_id": "order_ACcwSz252dgKOS",
-      "residual_paise": 2987100,
+      "subject_id": "order_1EojCBrBgfB7Xi",
+      "residual_paise": 577700,
       "defect": "duplicate_order_row"
     },
     {
       "code": "DUPLICATE",
       "subject_kind": "merchant_order",
-      "subject_id": "order_hEze7sTLZMaiEl",
-      "residual_paise": 2195000,
+      "subject_id": "order_7difCPsY37eT8G",
+      "residual_paise": 602500,
       "defect": "duplicate_order_row"
     },
     {
       "code": "DUPLICATE",
       "subject_kind": "merchant_order",
-      "subject_id": "order_JXO9okKo5Fcdxt",
-      "residual_paise": 1994200,
+      "subject_id": "order_RGZUQgh5ANugIQ",
+      "residual_paise": 845700,
       "defect": "duplicate_order_row"
     },
     {
       "code": "DUPLICATE",
       "subject_kind": "merchant_order",
-      "subject_id": "order_JcU43szj34zjuP",
-      "residual_paise": 1809500,
+      "subject_id": "order_bXQNmWWsVtqzf6",
+      "residual_paise": 2299600,
       "defect": "duplicate_order_row"
     }
   ],
@@ -4141,8 +4148,8 @@
     "orders": 1516,
     "settlement_lines": 1632,
     "settlement_batches": 21,
-    "bank_txns": 25,
-    "expected_exceptions": 130,
+    "bank_txns": 26,
+    "expected_exceptions": 131,
     "gross_paise": 1561807200,
     "seed": 20260905
   }

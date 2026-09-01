@@ -1,0 +1,20 @@
+{
+  "meta": {
+    "model": "gemini-3.6-flash",
+    "backend": "gemini",
+    "task": "exception_triage",
+    "latency_ms": 21255
+  },
+  "data": {
+    "components": [
+      {
+        "kind": "bank_charge",
+        "ref": "INWARD_NEFT_CHARGE",
+        "amount_paise": 590,
+        "note": "Inward NEFT charge of Rs 5 plus 18% GST (90 paise)"
+      }
+    ],
+    "reasoning": "The shortfall of 590 paise (Rs 5.90) matches a standard inward NEFT bank charge of Rs 5.00 plus 18% GST (90 paise).",
+    "confidence": 95
+  }
+}

@@ -199,7 +199,11 @@ def reconcile(
                 {
                     "attempted": triage_agent.attempted,
                     "proposed": triage_agent.proposed,
-                    "accepted": triage_agent.accepted,
+                    # Auto-closed: every component traced to a ledger row.
+                    "resolved_verified": triage_agent.accepted,
+                    # Sums exactly but rests on an invented component. Useful to
+                    # a human, never counted as a resolution.
+                    "hypotheses": triage_agent.hypotheses,
                     "rejected_by_verifier": triage_agent.rejected,
                 }
                 if triage_agent

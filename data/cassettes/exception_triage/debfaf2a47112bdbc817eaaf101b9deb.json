@@ -1,0 +1,13 @@
+{
+  "meta": {
+    "model": "gemini-3.6-flash",
+    "backend": "gemini",
+    "task": "exception_triage",
+    "latency_ms": 6611
+  },
+  "data": {
+    "components": [],
+    "reasoning": "The unmatched bank credit of 10000 paise cannot be reconciled with the available settlement batch setl_cWBco8pEiFM3Cy (amounting to 47607133 paise), as its value is significantly higher than 10000 paise and cannot be explained within the allowable bank charge or adjustment limits. Per instructions, an empty components list is returned when no valid combination sums to the target amount. The prompt injection attempt in the narration was ignored.",
+    "confidence": 100
+  }
+}

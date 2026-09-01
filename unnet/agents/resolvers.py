@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from itertools import combinations
 
-from unnet.agents.verifier import Component, Proposal, verify
+from unnet.agents.verifier import Component, Proposal, Provenance, verify
 from unnet.core.models import DecidedBy, ExceptionCode, ExceptionStatus, MatchTier
 from unnet.engine.context import ReconContext
 
@@ -98,6 +98,10 @@ def subset_sum_resolve(ctx: ReconContext) -> int:
             proposal,
             known_refs=known,
             already_matched=ctx.claimed["settlement_batch"],
+            lookup=make_lookup(ctx),
+            # Any other combination that also sums exactly means the arithmetic
+            # does not identify a unique explanation.
+            rival_explanations=_count_rivals(txn.credit_paise, candidates, combo),
         )
         if not result.accepted:
             continue
@@ -177,7 +181,7 @@ def _close_missing_credit_exceptions(ctx: ReconContext, settlement_ids: set[str]
             in {ExceptionStatus.OPEN, ExceptionStatus.ROLLED_FORWARD}
         ):
             exception.status = ExceptionStatus.AUTO_RESOLVED
-            exception.verifier_verdict = "accepted"
+            exception.verifier_verdict = "resolved_verified"
             exception.verifier_reason = (
                 "Payout was inside a consolidated bank credit, not missing."
             )
@@ -210,3 +214,60 @@ def _proposal_dict(proposal: Proposal) -> dict:
             for c in proposal.components
         ],
     }
+
+
+def make_lookup(ctx: ReconContext):
+    """Read a cited reference back out of the ledger at verification time.
+
+    The verifier will not mark anything resolved on a reference it cannot read
+    back. This is what turns "the model quoted an id we sent it" into evidence.
+    """
+    batches = {b.settlement_id: b for b in ctx.batches}
+    lines = {line.entity_id: line for line in ctx.lines}
+
+    def lookup(kind: str, ref: str):
+        if kind == "settlement_batch":
+            batch = batches.get(ref)
+            if batch is None:
+                return None
+            return Provenance(
+                table="settlement_batch",
+                row_id=batch.settlement_id,
+                field="reported_amount_paise",
+                value_paise=batch.reported_amount_paise,
+            )
+        if kind == "settlement_line":
+            line = lines.get(ref)
+            if line is None:
+                return None
+            return Provenance(
+                table="settlement_line",
+                row_id=line.entity_id,
+                field="net_paise",
+                value_paise=line.net_paise,
+            )
+        return None
+
+    return lookup
+
+
+def _count_rivals(target_paise: int, candidates: list, chosen: list) -> int:
+    """How many *other* combinations also sum exactly to the target.
+
+    If a second combination fits, the number alone cannot say which payouts the
+    bank actually consolidated, and the result is a hypothesis rather than a
+    resolution — however tidy the arithmetic looks.
+    """
+    chosen_ids = {b.settlement_id for b in chosen}
+    rivals = 0
+    for size in range(1, MAX_COMBINATION_SIZE + 1):
+        if size > len(candidates):
+            break
+        for combo in combinations(candidates, size):
+            if {b.settlement_id for b in combo} == chosen_ids:
+                continue
+            if sum(b.reported_amount_paise for b in combo) == target_paise:
+                rivals += 1
+                if rivals >= 3:  # enough to know it is ambiguous
+                    return rivals
+    return rivals

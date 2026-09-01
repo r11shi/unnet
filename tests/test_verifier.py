@@ -32,7 +32,7 @@ def _proposal(components, target):
     )
 
 
-def test_accepts_an_exact_decomposition():
+def test_accepts_a_fully_evidenced_decomposition():
     result = verify(
         _proposal(
             [
@@ -44,7 +44,7 @@ def test_accepts_an_exact_decomposition():
         known_refs=KNOWN,
     )
     assert result.accepted
-    assert result.verdict is Verdict.ACCEPTED
+    assert result.verdict is Verdict.RESOLVED_VERIFIED
 
 
 def test_rejects_a_proposal_that_is_off_by_fifty_paise():
@@ -137,8 +137,13 @@ def test_rejects_a_large_invented_adjustment():
     assert result.verdict is Verdict.REJECTED_IMPLAUSIBLE_ADJUSTMENT
 
 
-def test_accepts_a_bank_charge_of_a_realistic_size():
-    """A ₹10 NEFT charge plus GST is exactly what this mechanism is for."""
+def test_a_realistic_bank_charge_is_a_hypothesis_not_a_resolution():
+    """A ₹10 NEFT charge plus GST is a good guess and not evidence.
+
+    It sums exactly and it is probably right. It is still a number the model
+    invented, present in no record, so it can never close an exception on its
+    own — it goes to a human labelled as what it is.
+    """
     result = verify(
         _proposal(
             [
@@ -149,7 +154,31 @@ def test_accepts_a_bank_charge_of_a_realistic_size():
         ),
         known_refs=KNOWN,
     )
-    assert result.accepted
+    assert result.verdict is Verdict.HYPOTHESIS
+    assert not result.accepted
+    assert result.unevidenced == ["bank_charge:neft_fee_plus_gst"]
+
+
+def test_provenance_read_back_is_required_when_a_lookup_is_supplied():
+    """A citation nobody can look up is a name, not evidence."""
+    result = verify(
+        _proposal([Component("settlement_batch", "setl_A", 100_000)], 100_000),
+        known_refs=KNOWN,
+        lookup=lambda kind, ref: None,  # ledger cannot confirm it
+    )
+    assert result.verdict is Verdict.REJECTED_PROVENANCE_FAILED
+
+
+def test_a_rival_explanation_downgrades_to_hypothesis():
+    """Two combinations that both sum exactly mean the arithmetic does not say
+    which one happened. Numerical agreement is not proof of explanation."""
+    result = verify(
+        _proposal([Component("settlement_batch", "setl_A", 100_000)], 100_000),
+        known_refs=KNOWN,
+        rival_explanations=1,
+    )
+    assert result.verdict is Verdict.HYPOTHESIS
+    assert result.rival_explanations == 1
 
 
 def test_rejects_an_empty_proposal():
