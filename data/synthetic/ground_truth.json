@@ -3054,26 +3054,26 @@
     "rfnd_LI1c5SyOVnJxK7": "setl_cWBco8pEiFM3Cy"
   },
   "batch_to_bank": {
-    "setl_A8q1V6qC1z0lVL": "N677067297979",
-    "setl_pgJouxFpTLfAne": "N146377337520",
-    "setl_c0ccRfThIMQRGV": "N249968602722",
-    "setl_RLRPJ60jkd1kFa": "N710068053782",
-    "setl_5P60SVmEwNqZSf": "N311362524410",
-    "setl_biKch5gGOzawKB": "N871346117564",
-    "setl_JmQjT5AN6Xmw9x": "N615921426239",
-    "setl_sn8dIxElrcdXiA": "N356851331754",
-    "setl_JA3s7Iml89eBNJ": "N902777075770",
-    "setl_jo8QbtZx3MCw6d": "N502451226449",
-    "setl_X03H3LRrAXrVHk": "N756789290575",
-    "setl_h1WtzHwKHTV5yc": "N488945543079",
-    "setl_dAgKC6Mi3IWtGw": "N308195478942",
-    "setl_CGzmnuWsqHw9IQ": "N822604822573",
+    "setl_A8q1V6qC1z0lVL": "N494559820957",
+    "setl_pgJouxFpTLfAne": "N978781685455",
+    "setl_c0ccRfThIMQRGV": "N195068781124",
+    "setl_RLRPJ60jkd1kFa": "N720861326272",
+    "setl_5P60SVmEwNqZSf": "N924654502894",
+    "setl_biKch5gGOzawKB": "N579745854373",
+    "setl_JmQjT5AN6Xmw9x": "N995702068595",
+    "setl_sn8dIxElrcdXiA": "N249577585571",
+    "setl_JA3s7Iml89eBNJ": "N502451226449",
+    "setl_jo8QbtZx3MCw6d": "N756789290575",
+    "setl_X03H3LRrAXrVHk": "N410143701993",
+    "setl_h1WtzHwKHTV5yc": "N937517893866",
+    "setl_dAgKC6Mi3IWtGw": "N572088821462",
+    "setl_CGzmnuWsqHw9IQ": "N966117729190",
     "setl_dgfI6hQIfrqAWY": "N176754497137",
     "setl_5mfYKu6bIcRegT": "N378983977434",
-    "setl_ciRz08X79fniep": "N677149899069",
-    "setl_q3qi9TDwgcb9N3": "N358965830877",
-    "setl_uSVAjECkFL18PV": "N932375091321",
-    "setl_kpyQhmqDDZNAR1": "N236642661781"
+    "setl_ciRz08X79fniep": "N378983977434",
+    "setl_q3qi9TDwgcb9N3": "N198756398451",
+    "setl_uSVAjECkFL18PV": "N262557854973",
+    "setl_kpyQhmqDDZNAR1": "N422912268818"
   },
   "reversal_to_payment": {
     "rfnd_ErFkb9ULFbiXxY": "pay_diFvxK1jiULdKl",
@@ -3292,13 +3292,6 @@
       "defect": "partial_refund_split"
     },
     {
-      "code": "PARTIAL_REFUND_SPLIT",
-      "subject_kind": "settlement_line",
-      "subject_id": "rfnd_JFmYeCrJETC4cN",
-      "residual_paise": 0,
-      "defect": "partial_refund_split"
-    },
-    {
       "code": "CHARGEBACK_DEDUCTION",
       "subject_kind": "settlement_line",
       "subject_id": "disp_1ERiZvqzyvGhiw",
@@ -3350,21 +3343,7 @@
     {
       "code": "PARTIAL_REFUND_SPLIT",
       "subject_kind": "settlement_line",
-      "subject_id": "rfnd_K3ZwR7JM5IpHcn",
-      "residual_paise": 0,
-      "defect": "partial_refund_split"
-    },
-    {
-      "code": "PARTIAL_REFUND_SPLIT",
-      "subject_kind": "settlement_line",
       "subject_id": "rfnd_A0t5wgreFk0Ig3",
-      "residual_paise": 0,
-      "defect": "partial_refund_split"
-    },
-    {
-      "code": "PARTIAL_REFUND_SPLIT",
-      "subject_kind": "settlement_line",
-      "subject_id": "rfnd_Ss1lcqbu5fBJnH",
       "residual_paise": 0,
       "defect": "partial_refund_split"
     },
@@ -3418,13 +3397,6 @@
       "defect": "partial_refund_split"
     },
     {
-      "code": "PARTIAL_REFUND_SPLIT",
-      "subject_kind": "settlement_line",
-      "subject_id": "rfnd_ulSXKykEYmB8AS",
-      "residual_paise": 0,
-      "defect": "partial_refund_split"
-    },
-    {
       "code": "REFUND_WITHOUT_ORIGINAL",
       "subject_kind": "settlement_line",
       "subject_id": "rfnd_TIktgDi6tkFcgo",
@@ -3442,13 +3414,6 @@
       "code": "PARTIAL_REFUND_SPLIT",
       "subject_kind": "settlement_line",
       "subject_id": "rfnd_uB6O8LJhxSdDq0",
-      "residual_paise": 0,
-      "defect": "partial_refund_split"
-    },
-    {
-      "code": "PARTIAL_REFUND_SPLIT",
-      "subject_kind": "settlement_line",
-      "subject_id": "rfnd_axfZu0FMkJimxm",
       "residual_paise": 0,
       "defect": "partial_refund_split"
     },
@@ -3484,13 +3449,6 @@
       "code": "PARTIAL_REFUND_SPLIT",
       "subject_kind": "settlement_line",
       "subject_id": "rfnd_FEMG3RilPgZb0W",
-      "residual_paise": 0,
-      "defect": "partial_refund_split"
-    },
-    {
-      "code": "PARTIAL_REFUND_SPLIT",
-      "subject_kind": "settlement_line",
-      "subject_id": "rfnd_8Ok90pkZwFTMhp",
       "residual_paise": 0,
       "defect": "partial_refund_split"
     },
@@ -3533,13 +3491,6 @@
       "code": "PARTIAL_REFUND_SPLIT",
       "subject_kind": "settlement_line",
       "subject_id": "rfnd_KYmavCoA7p1HE6",
-      "residual_paise": 0,
-      "defect": "partial_refund_split"
-    },
-    {
-      "code": "PARTIAL_REFUND_SPLIT",
-      "subject_kind": "settlement_line",
-      "subject_id": "rfnd_Z6ZNfEz2nRiOzn",
       "residual_paise": 0,
       "defect": "partial_refund_split"
     },
@@ -3663,13 +3614,6 @@
       "defect": "partial_refund_split"
     },
     {
-      "code": "PARTIAL_REFUND_SPLIT",
-      "subject_kind": "settlement_line",
-      "subject_id": "rfnd_lC7w611WeOPYA2",
-      "residual_paise": 0,
-      "defect": "partial_refund_split"
-    },
-    {
       "code": "ON_HOLD",
       "subject_kind": "merchant_order",
       "subject_id": "order_uY5mRfTs4SR0yq",
@@ -3707,21 +3651,7 @@
     {
       "code": "PARTIAL_REFUND_SPLIT",
       "subject_kind": "settlement_line",
-      "subject_id": "rfnd_kfjdRFzdK5WOvj",
-      "residual_paise": 0,
-      "defect": "partial_refund_split"
-    },
-    {
-      "code": "PARTIAL_REFUND_SPLIT",
-      "subject_kind": "settlement_line",
       "subject_id": "rfnd_FYmB9t1ZTNXvO6",
-      "residual_paise": 0,
-      "defect": "partial_refund_split"
-    },
-    {
-      "code": "PARTIAL_REFUND_SPLIT",
-      "subject_kind": "settlement_line",
-      "subject_id": "rfnd_c8X5SPH6v066Zg",
       "residual_paise": 0,
       "defect": "partial_refund_split"
     },
@@ -3754,13 +3684,6 @@
       "defect": "partial_refund_split"
     },
     {
-      "code": "PARTIAL_REFUND_SPLIT",
-      "subject_kind": "settlement_line",
-      "subject_id": "rfnd_Df9fC8UopiLwS4",
-      "residual_paise": 0,
-      "defect": "partial_refund_split"
-    },
-    {
       "code": "REFUND_WITHOUT_ORIGINAL",
       "subject_kind": "settlement_line",
       "subject_id": "rfnd_ucjKDovCiBMwhl",
@@ -3789,13 +3712,6 @@
       "defect": "partial_refund_split"
     },
     {
-      "code": "PARTIAL_REFUND_SPLIT",
-      "subject_kind": "settlement_line",
-      "subject_id": "rfnd_SRzwh2PUzgCnCO",
-      "residual_paise": 0,
-      "defect": "partial_refund_split"
-    },
-    {
       "code": "ON_HOLD",
       "subject_kind": "merchant_order",
       "subject_id": "order_z4nPFEyrUlrU7c",
@@ -3820,13 +3736,6 @@
       "code": "PARTIAL_REFUND_SPLIT",
       "subject_kind": "settlement_line",
       "subject_id": "rfnd_9nVsjZYvi7A838",
-      "residual_paise": 0,
-      "defect": "partial_refund_split"
-    },
-    {
-      "code": "PARTIAL_REFUND_SPLIT",
-      "subject_kind": "settlement_line",
-      "subject_id": "rfnd_rc7KR84slqvBkA",
       "residual_paise": 0,
       "defect": "partial_refund_split"
     },
@@ -3964,13 +3873,6 @@
       "defect": "partial_refund_split"
     },
     {
-      "code": "PARTIAL_REFUND_SPLIT",
-      "subject_kind": "settlement_line",
-      "subject_id": "rfnd_80O7B8jRwLqTKY",
-      "residual_paise": 0,
-      "defect": "partial_refund_split"
-    },
-    {
       "code": "REFUND_WITHOUT_ORIGINAL",
       "subject_kind": "settlement_line",
       "subject_id": "rfnd_YIwTOAMmsfreIe",
@@ -4055,20 +3957,6 @@
       "defect": "rounding_drift"
     },
     {
-      "code": "UNMATCHED_BANK_CREDIT",
-      "subject_kind": "bank_txn",
-      "subject_id": "N311362524410",
-      "residual_paise": 0,
-      "defect": "utr_missing_from_narration"
-    },
-    {
-      "code": "UNMATCHED_BANK_CREDIT",
-      "subject_kind": "bank_txn",
-      "subject_id": "N756789290575",
-      "residual_paise": 0,
-      "defect": "utr_missing_from_narration"
-    },
-    {
       "code": "SHORT_CREDIT",
       "subject_kind": "settlement_batch",
       "subject_id": "setl_h1WtzHwKHTV5yc",
@@ -4076,24 +3964,10 @@
       "defect": "short_credit"
     },
     {
-      "code": "UNMATCHED_BANK_CREDIT",
-      "subject_kind": "bank_txn",
-      "subject_id": "N488945543079",
-      "residual_paise": 0,
-      "defect": "utr_missing_from_narration"
-    },
-    {
-      "code": "UNMATCHED_BANK_CREDIT",
-      "subject_kind": "bank_txn",
-      "subject_id": "N378983977434",
-      "residual_paise": 0,
-      "defect": "utr_missing_from_narration"
-    },
-    {
       "code": "SHORT_CREDIT",
       "subject_kind": "settlement_batch",
       "subject_id": "setl_kpyQhmqDDZNAR1",
-      "residual_paise": 2360,
+      "residual_paise": 590,
       "defect": "short_credit"
     },
     {
@@ -4106,94 +3980,169 @@
     {
       "code": "DUPLICATE",
       "subject_kind": "merchant_order",
-      "subject_id": "order_BuYQUDzJjJaG21",
-      "residual_paise": 489600,
+      "subject_id": "order_8EYeG27czGAZ3x",
+      "residual_paise": 174600,
       "defect": "duplicate_order_row"
     },
     {
       "code": "DUPLICATE",
       "subject_kind": "merchant_order",
-      "subject_id": "order_zrzw6gd1WT46Vs",
-      "residual_paise": 39400,
+      "subject_id": "order_07gLtzcfaXOORv",
+      "residual_paise": 25900,
       "defect": "duplicate_order_row"
     },
     {
       "code": "DUPLICATE",
       "subject_kind": "merchant_order",
-      "subject_id": "order_qcXv0CzKs1n90f",
-      "residual_paise": 2641500,
+      "subject_id": "order_WkA96vyOLtMG3M",
+      "residual_paise": 390600,
       "defect": "duplicate_order_row"
     },
     {
       "code": "DUPLICATE",
       "subject_kind": "merchant_order",
-      "subject_id": "order_KimU9ls7oF3Y2W",
-      "residual_paise": 126700,
+      "subject_id": "order_vkjgn5mvfA7k1D",
+      "residual_paise": 4019700,
       "defect": "duplicate_order_row"
     },
     {
       "code": "DUPLICATE",
       "subject_kind": "merchant_order",
-      "subject_id": "order_crN2rq0nWEXfbB",
-      "residual_paise": 1110100,
+      "subject_id": "order_14ssJOXyCTdZqG",
+      "residual_paise": 2692700,
       "defect": "duplicate_order_row"
     },
     {
       "code": "DUPLICATE",
       "subject_kind": "merchant_order",
-      "subject_id": "order_8rTjcfJQT9616o",
-      "residual_paise": 33900,
+      "subject_id": "order_xv8afEP9mXNUXv",
+      "residual_paise": 4406600,
       "defect": "duplicate_order_row"
     },
     {
       "code": "DUPLICATE",
       "subject_kind": "merchant_order",
-      "subject_id": "order_nhp3TSk8lxFw73",
-      "residual_paise": 1197100,
+      "subject_id": "order_zILN796KRfdZYN",
+      "residual_paise": 32200,
       "defect": "duplicate_order_row"
     },
     {
       "code": "DUPLICATE",
       "subject_kind": "merchant_order",
-      "subject_id": "order_s5ecsCOB18aWc1",
-      "residual_paise": 2263500,
+      "subject_id": "order_KLY6PbYIkaNPnU",
+      "residual_paise": 1338900,
       "defect": "duplicate_order_row"
     },
     {
       "code": "DUPLICATE",
       "subject_kind": "merchant_order",
-      "subject_id": "order_2aC0vE9eJKEQfR",
-      "residual_paise": 4394700,
+      "subject_id": "order_TAPdUMtCFOh0AL",
+      "residual_paise": 41700,
       "defect": "duplicate_order_row"
     },
     {
       "code": "DUPLICATE",
       "subject_kind": "merchant_order",
-      "subject_id": "order_MGMgj8lVjg4G00",
-      "residual_paise": 876400,
+      "subject_id": "order_8nGs9jVPjjUpnj",
+      "residual_paise": 139300,
       "defect": "duplicate_order_row"
     },
     {
       "code": "DUPLICATE",
       "subject_kind": "merchant_order",
-      "subject_id": "order_318tBTsA6HZ8im",
-      "residual_paise": 785600,
+      "subject_id": "order_rY1MSYkDBFb2hd",
+      "residual_paise": 126000,
       "defect": "duplicate_order_row"
     },
     {
       "code": "DUPLICATE",
       "subject_kind": "merchant_order",
-      "subject_id": "order_slym7VYvcAJrnk",
-      "residual_paise": 205900,
+      "subject_id": "order_DjW2ExBxYwSR0X",
+      "residual_paise": 349800,
+      "defect": "duplicate_order_row"
+    },
+    {
+      "code": "DUPLICATE",
+      "subject_kind": "merchant_order",
+      "subject_id": "order_ACcwSz252dgKOS",
+      "residual_paise": 2987100,
+      "defect": "duplicate_order_row"
+    },
+    {
+      "code": "DUPLICATE",
+      "subject_kind": "merchant_order",
+      "subject_id": "order_hEze7sTLZMaiEl",
+      "residual_paise": 2195000,
+      "defect": "duplicate_order_row"
+    },
+    {
+      "code": "DUPLICATE",
+      "subject_kind": "merchant_order",
+      "subject_id": "order_JXO9okKo5Fcdxt",
+      "residual_paise": 1994200,
+      "defect": "duplicate_order_row"
+    },
+    {
+      "code": "DUPLICATE",
+      "subject_kind": "merchant_order",
+      "subject_id": "order_JcU43szj34zjuP",
+      "residual_paise": 1809500,
       "defect": "duplicate_order_row"
     }
   ],
+  "hard_cases": [
+    {
+      "kind": "utr_missing_from_narration",
+      "subject_kind": "bank_txn",
+      "subject_id": "N924654502894",
+      "credit_paise": 65287270,
+      "components": [
+        "setl_5P60SVmEwNqZSf"
+      ],
+      "solvable_by_rules": true,
+      "note": "UTR absent from the narration. Still recoverable by amount and date when the payout is unambiguous."
+    },
+    {
+      "kind": "utr_missing_from_narration",
+      "subject_kind": "bank_txn",
+      "subject_id": "N410143701993",
+      "credit_paise": 76894734,
+      "components": [
+        "setl_X03H3LRrAXrVHk"
+      ],
+      "solvable_by_rules": true,
+      "note": "UTR absent from the narration. Still recoverable by amount and date when the payout is unambiguous."
+    },
+    {
+      "kind": "utr_missing_from_narration",
+      "subject_kind": "bank_txn",
+      "subject_id": "N937517893866",
+      "credit_paise": 68889882,
+      "components": [
+        "setl_h1WtzHwKHTV5yc"
+      ],
+      "solvable_by_rules": true,
+      "note": "UTR absent from the narration. Still recoverable by amount and date when the payout is unambiguous."
+    },
+    {
+      "kind": "consolidated_credit",
+      "subject_kind": "bank_txn",
+      "subject_id": "N378983977434",
+      "credit_paise": 180471541,
+      "components": [
+        "setl_5mfYKu6bIcRegT",
+        "setl_ciRz08X79fniep"
+      ],
+      "solvable_by_rules": false,
+      "note": "One bank line for two payouts. No matching rule can close this; it needs a proposed decomposition that sums exactly."
+    }
+  ],
   "stats": {
-    "orders": 1512,
-    "settlement_lines": 1591,
+    "orders": 1516,
+    "settlement_lines": 1632,
     "settlement_batches": 21,
-    "bank_txns": 26,
-    "expected_exceptions": 144,
+    "bank_txns": 25,
+    "expected_exceptions": 130,
     "gross_paise": 1561807200,
     "seed": 20260905
   }

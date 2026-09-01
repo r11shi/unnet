@@ -68,6 +68,8 @@ class DefectRates:
     refund_rate: float = 0.06
     #: Fraction of payments that get charged back.
     dispute_rate: float = 0.012
+    #: Collapse one adjacent pair of payouts into a single bank credit.
+    consolidated_credit: bool = True
 
 
 @dataclass
@@ -95,6 +97,14 @@ class GroundTruth:
     reversal_to_payment: dict[str, str] = field(default_factory=dict)
     #: Breaks we deliberately created, as (code, subject_kind, subject_id, residual).
     expected_exceptions: list[dict] = field(default_factory=list)
+    #: Links we deliberately made hard to find, but which are still findable.
+    #:
+    #: These are *not* expected exceptions. Hiding a UTR does not create a
+    #: break — the money is right, only the obvious link is gone — so a run
+    #: that recovers the link some other way has done better, not worse.
+    #: Grading these as exceptions the engine "should" have raised would
+    #: penalise it for succeeding.
+    hard_cases: list[dict] = field(default_factory=list)
     stats: dict = field(default_factory=dict)
 
 
@@ -244,9 +254,10 @@ def generate(config: GeneratorConfig | None = None) -> GroundTruth:
             else:
                 pieces = [amount]
 
-            for piece in pieces:
+            for piece_index, piece in enumerate(pieces):
                 reversal = {
                     "kind": "refund",
+                    "is_split_head": piece_index == 0,
                     "entity_id": ids.refund(),
                     "payment_id": payment["payment_id"],
                     "order_id": payment["order_id"],
@@ -293,6 +304,9 @@ def generate(config: GeneratorConfig | None = None) -> GroundTruth:
         )
     )
 
+    #: Payments held back by risk. Reported by the gateway, but in no payout.
+    held_lines: list[dict] = []
+
     for day in range(cfg.n_days):
         settle_day = day + cfg.settlement_lag_days
         settled_at = start + timedelta(days=settle_day, hours=11)
@@ -301,7 +315,34 @@ def generate(config: GeneratorConfig | None = None) -> GroundTruth:
         for payment in payments_by_day[day]:
             if rng.random() < cfg.defects.unsettled_on_hold:
                 # Risk hold: the money is real but it is not in this payout.
+                # Razorpay still reports the line, flagged on_hold and unsettled
+                # with no settlement id — which is the only way a merchant can
+                # tell "held by risk" apart from "missing entirely".
                 payment["on_hold"] = True
+                rate = RATE_CARD_BPS[payment["method"]]
+                mdr = apply_bps(payment["gross"], rate)
+                tax = gst_on(mdr)
+                held_lines.append(
+                    {
+                        "entity_id": payment["payment_id"],
+                        "type": "payment",
+                        "amount": payment["gross"],
+                        "fee": mdr + tax,
+                        "tax": tax,
+                        "credit": payment["gross"] - mdr - tax,
+                        "debit": 0,
+                        "payment_id": payment["payment_id"],
+                        "order_id": payment["order_id"],
+                        "dispute_id": None,
+                        "method": payment["method"],
+                        "created_at": payment["captured_at"],
+                        "settlement_id": None,
+                        "settlement_utr": None,
+                        "settled_at": None,
+                        "on_hold": True,
+                        "settled": False,
+                    }
+                )
                 truth.expected_exceptions.append(
                     {
                         "code": "ON_HOLD",
@@ -394,7 +435,15 @@ def generate(config: GeneratorConfig | None = None) -> GroundTruth:
                         "defect": "refund_without_original",
                     }
                 )
-            if reversal["split_of"] and not reversal["orphaned"]:
+            # Recorded once for the whole split, on its first line, because the
+            # engine reports one exception per refund group rather than one per
+            # line. Labelling both pieces would make the ground truth disagree
+            # with the engine on counting, not on correctness.
+            if (
+                reversal["split_of"]
+                and not reversal["orphaned"]
+                and reversal.get("is_split_head")
+            ):
                 truth.expected_exceptions.append(
                     {
                         "code": "PARTIAL_REFUND_SPLIT",
@@ -475,6 +524,10 @@ def generate(config: GeneratorConfig | None = None) -> GroundTruth:
         )
         lines.extend(batch_lines)
 
+    # Held payments belong to no payout, so they are appended after all the
+    # batches are closed and are never counted in any batch's netting.
+    lines.extend(held_lines)
+
     # ------------------------------------------------------------------ #
     # 4. The bank statement. One lumped credit per batch — usually.
     # ------------------------------------------------------------------ #
@@ -507,6 +560,34 @@ def generate(config: GeneratorConfig | None = None) -> GroundTruth:
         )
     )
 
+    # Two consecutive payouts posted by the bank as a single consolidated NEFT
+    # line. This is the one break no matching rule can close: the credit equals
+    # neither payout, so amount matching has nothing to match, and the narration
+    # carries no UTR. Closing it means proposing "credit = batch A + batch B"
+    # and proving the sum — which is what the triage agent and its verifier are
+    # for. Placed deliberately: without a case rules genuinely cannot solve,
+    # there is no honest way to show the model earning its place.
+    # The pair is drawn from batches carrying no amount defect, so this case
+    # tests linkage alone. A consolidated credit that is also short by ₹11.80
+    # would make the expected residual ambiguous and the label untrustworthy.
+    consolidate_pair: tuple[str, str] | None = None
+    if cfg.defects.consolidated_credit:
+        clean = [
+            index
+            for index in range(1, len(landed))
+            if landed[index]["settlement_id"] not in short_credit_ids | rounding_ids
+            and landed[index - 1]["settlement_id"] not in short_credit_ids | rounding_ids
+        ]
+        if clean:
+            pivot = rng.choice(clean)
+            consolidate_pair = (
+                landed[pivot - 1]["settlement_id"],
+                landed[pivot]["settlement_id"],
+            )
+
+    consolidated_head, consolidated_tail = consolidate_pair or (None, None)
+    consolidated_carry = 0
+
     for batch in ordered_batches:
         # The most recent payout has been initiated but has not landed yet.
         # This is a timing difference, not an error, and the engine has to say so.
@@ -520,6 +601,12 @@ def generate(config: GeneratorConfig | None = None) -> GroundTruth:
                     "defect": "credit_not_yet_landed",
                 }
             )
+            continue
+
+        # First half of a consolidated pair: the bank posts nothing today and
+        # rolls the amount into tomorrow's single combined line.
+        if batch["settlement_id"] == consolidated_head:
+            consolidated_carry = batch["amount"]
             continue
 
         credited = batch["amount"]
@@ -554,8 +641,49 @@ def generate(config: GeneratorConfig | None = None) -> GroundTruth:
                 }
             )
 
-        balance += credited
         bank_ref = f"N{rng.randrange(10**11, 10**12 - 1)}"
+
+        if batch["settlement_id"] == consolidated_tail and consolidated_carry:
+            # One bank line for two payouts, with no UTR for either. No matching
+            # rule can close this; only a proposed decomposition that sums
+            # exactly can.
+            credited += consolidated_carry
+            balance += credited
+            bank_rows.append(
+                {
+                    "bank_ref": bank_ref,
+                    "value_date": batch["settled_at"],
+                    "narration": (
+                        "NEFT CONSOLIDATED CR-RAZORPAY SOFTWARE PVT LTD-"
+                        f"{cfg.merchant_name.upper()}-2 ITEMS"
+                    ),
+                    "credit": credited,
+                    "debit": 0,
+                    "balance": balance,
+                    "settlement_id": None,
+                    "utr_hidden": True,
+                    "defect": "consolidated_credit",
+                }
+            )
+            truth.hard_cases.append(
+                {
+                    "kind": "consolidated_credit",
+                    "subject_kind": "bank_txn",
+                    "subject_id": bank_ref,
+                    "credit_paise": credited,
+                    "components": [consolidated_head, consolidated_tail],
+                    "solvable_by_rules": False,
+                    "note": (
+                        "One bank line for two payouts. No matching rule can close "
+                        "this; it needs a proposed decomposition that sums exactly."
+                    ),
+                }
+            )
+            truth.batch_to_bank[consolidated_head] = bank_ref
+            truth.batch_to_bank[batch["settlement_id"]] = bank_ref
+            continue
+
+        balance += credited
 
         hide_utr = batch["settlement_id"] in hidden_utr_ids
         if hide_utr:
@@ -569,13 +697,18 @@ def generate(config: GeneratorConfig | None = None) -> GroundTruth:
                     f"MB:NEFT:RAZORPAY SOFTWARE:PAYOUT:REF{rng.randrange(10**6, 10**7)}",
                 ]
             )
-            truth.expected_exceptions.append(
+            truth.hard_cases.append(
                 {
-                    "code": "UNMATCHED_BANK_CREDIT",
+                    "kind": "utr_missing_from_narration",
                     "subject_kind": "bank_txn",
                     "subject_id": bank_ref,
-                    "residual_paise": 0,
-                    "defect": "utr_missing_from_narration",
+                    "credit_paise": credited,
+                    "components": [batch["settlement_id"]],
+                    "solvable_by_rules": True,
+                    "note": (
+                        "UTR absent from the narration. Still recoverable by amount "
+                        "and date when the payout is unambiguous."
+                    ),
                 }
             )
         else:
@@ -747,9 +880,13 @@ def _write_files(cfg, ledger_rows, lines, batches, bank_rows, truth: GroundTruth
                     "on_hold": str(line["on_hold"]).lower(),
                     "settled": str(line["settled"]).lower(),
                     "created_at": line["created_at"].isoformat(),
-                    "settled_at": line["settled_at"].isoformat(),
-                    "settlement_id": line["settlement_id"],
-                    "settlement_utr": line["settlement_utr"],
+                    # Held lines carry no settlement at all — the gateway
+                    # reports them with these three columns empty.
+                    "settled_at": (
+                        line["settled_at"].isoformat() if line["settled_at"] else ""
+                    ),
+                    "settlement_id": line["settlement_id"] or "",
+                    "settlement_utr": line["settlement_utr"] or "",
                     "credit_type": "default",
                     "payment_id": line["payment_id"] or "",
                     "order_id": line["order_id"] or "",

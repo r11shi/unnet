@@ -1,0 +1,184 @@
+"""The reconciliation run, end to end."""
+
+from __future__ import annotations
+
+import time
+import uuid
+from dataclasses import dataclass, field
+from datetime import datetime
+from pathlib import Path
+from typing import Optional
+
+from unnet.core.db import AuditLog
+from unnet.core.models import DecidedBy, ExceptionStatus, Run
+from unnet.engine import netting, tier1, tier2, tier3
+from unnet.engine.context import ReconContext
+from unnet.ingest import loaders
+from unnet.ingest.mapping import MappingSpec, SourceKind, heuristic_map, validate_spec
+
+
+@dataclass
+class SourcePaths:
+    merchant_ledger: Path
+    settlement_recon: Path
+    settlements: Path
+    bank_statement: Path
+
+    @classmethod
+    def synthetic(cls, root: Path | str = "data/synthetic") -> "SourcePaths":
+        base = Path(root)
+        return cls(
+            merchant_ledger=base / "merchant_ledger.csv",
+            settlement_recon=base / "razorpay_settlement_recon.csv",
+            settlements=base / "razorpay_settlements.csv",
+            bank_statement=base / "bank_statement.csv",
+        )
+
+
+@dataclass
+class ReconResult:
+    ctx: ReconContext
+    run: Run
+    netting: netting.NettingResult
+    specs: dict[str, MappingSpec] = field(default_factory=dict)
+
+
+def reconcile(
+    paths: SourcePaths,
+    *,
+    run_id: Optional[str] = None,
+    audit: Optional[AuditLog] = None,
+    ai_enabled: bool = True,
+    label: str = "",
+    mapper=None,
+) -> ReconResult:
+    """Run one pass.
+
+    ``mapper`` is the optional model-backed schema mapper. When it is ``None``
+    the pipeline is pure rules, which is exactly what the ablation baseline
+    needs — the two runs differ only by what is passed in here.
+    """
+    run_id = run_id or uuid.uuid4().hex[:12]
+    started = time.perf_counter()
+
+    ctx = ReconContext(run_id=run_id, audit=audit, ai_enabled=ai_enabled)
+    specs: dict[str, MappingSpec] = {}
+
+    sources = [
+        (SourceKind.MERCHANT_LEDGER, paths.merchant_ledger),
+        (SourceKind.SETTLEMENT_RECON, paths.settlement_recon),
+        (SourceKind.SETTLEMENTS, paths.settlements),
+        (SourceKind.BANK_STATEMENT, paths.bank_statement),
+    ]
+
+    loaded: dict[str, list[dict[str, str]]] = {}
+    for kind, path in sources:
+        headers, rows = loaders.read_csv(path)
+        spec = heuristic_map(headers, kind)
+        report = validate_spec(spec, rows)
+
+        if not report.ok and mapper is not None:
+            # The heuristic could not name every required column. This is the
+            # one place a model genuinely beats a rule: arbitrary headers in a
+            # file nobody has seen before. Whatever it proposes is re-validated
+            # below, and a proposal that does not parse is discarded.
+            proposed = mapper.propose(kind, headers, rows[:5])
+            if proposed is not None:
+                proposed_report = validate_spec(proposed, rows)
+                if proposed_report.ok:
+                    spec, report = proposed, proposed_report
+
+        specs[kind] = spec
+        loaded[kind] = rows
+
+        if audit:
+            audit.record(
+                stage="ingest",
+                subject_kind="source",
+                subject_id=kind,
+                decision=f"mapped {len(spec.columns)} columns via {spec.produced_by}",
+                decided_by=(
+                    DecidedBy.MODEL if spec.produced_by.startswith("model") else DecidedBy.RULE
+                ),
+                decider_ref=spec.produced_by,
+                confidence=spec.confidence,
+                evidence={
+                    "path": str(path),
+                    "headers": headers,
+                    "columns": spec.columns,
+                    "rows": len(rows),
+                },
+                verifier_result="ok" if report.ok else report.reason,
+            )
+
+    ctx.orders = loaders.load_merchant_orders(
+        loaded[SourceKind.MERCHANT_LEDGER], specs[SourceKind.MERCHANT_LEDGER], run_id
+    )
+    ctx.lines = loaders.load_settlement_lines(
+        loaded[SourceKind.SETTLEMENT_RECON], specs[SourceKind.SETTLEMENT_RECON], run_id
+    )
+    ctx.batches = loaders.load_settlement_batches(
+        loaded[SourceKind.SETTLEMENTS], specs[SourceKind.SETTLEMENTS], run_id
+    )
+    ctx.bank_txns = loaders.load_bank_txns(
+        loaded[SourceKind.BANK_STATEMENT], specs[SourceKind.BANK_STATEMENT], run_id
+    )
+    ctx.build_indexes()
+
+    tier1.run(ctx)
+    tier2.run(ctx)
+    tier3.run(ctx)
+    netting_result = netting.run(ctx)
+
+    duration_ms = int((time.perf_counter() - started) * 1000)
+    run = _summarise(ctx, netting_result, duration_ms, ai_enabled=ai_enabled, label=label)
+    return ReconResult(ctx=ctx, run=run, netting=netting_result, specs=specs)
+
+
+def _summarise(
+    ctx: ReconContext,
+    netting_result: netting.NettingResult,
+    duration_ms: int,
+    *,
+    ai_enabled: bool,
+    label: str,
+) -> Run:
+    open_states = {ExceptionStatus.OPEN, ExceptionStatus.AI_REJECTED}
+    open_exceptions = [e for e in ctx.exceptions if e.status in open_states]
+
+    # Value reconciled is the gross that made it into a match, not the count of
+    # matches: 1,000 matched ₹10 orders and one missed ₹10 lakh order is not a
+    # 99.9% result in any sense a finance team cares about.
+    matched_orders = ctx.claimed["merchant_order"]
+    value_reconciled = sum(
+        o.gross_paise for o in ctx.orders if o.order_id in matched_orders
+    )
+    value_in_exceptions = sum(abs(e.residual_paise) for e in open_exceptions)
+
+    return Run(
+        run_id=ctx.run_id,
+        label=label,
+        ai_enabled=ai_enabled,
+        started_at=datetime.utcnow(),
+        finished_at=datetime.utcnow(),
+        duration_ms=duration_ms,
+        orders_count=len(ctx.orders),
+        settlement_lines_count=len(ctx.lines),
+        bank_txns_count=len(ctx.bank_txns),
+        matched_count=len(ctx.matches),
+        exceptions_open=len(open_exceptions),
+        exceptions_ai_resolved=sum(
+            1 for e in ctx.exceptions if e.status == ExceptionStatus.AI_RESOLVED
+        ),
+        exceptions_ai_rejected=sum(
+            1 for e in ctx.exceptions if e.status == ExceptionStatus.AI_REJECTED
+        ),
+        value_reconciled_paise=value_reconciled,
+        value_in_exceptions_paise=value_in_exceptions,
+        notes={
+            "batches": len(netting_result.breakdowns),
+            "batches_internally_inconsistent": sum(
+                1 for b in netting_result.breakdowns if not b.internally_consistent
+            ),
+        },
+    )
