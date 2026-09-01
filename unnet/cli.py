@@ -18,6 +18,7 @@ from rich.console import Console
 from rich.table import Table
 
 from unnet.core.db import AuditLog, make_engine, session_scope
+from unnet.engine import casefile
 from unnet.core.models import ExceptionStatus
 from unnet.core.money import format_inr
 from unnet.engine.pipeline import SourcePaths, reconcile
@@ -66,6 +67,9 @@ def _run(args, *, ai_enabled: bool, label: str, data: str | None = None):
 
         run_id = uuid.uuid4().hex[:12]
         audit = AuditLog(session, run_id)
+        # What the previous runs already know. This is what lets a case that a
+        # human settled stay settled instead of being raised again.
+        previous = casefile.load_previous(session)
         result = reconcile(
             SourcePaths.synthetic(data),
             run_id=run_id,
@@ -73,8 +77,10 @@ def _run(args, *, ai_enabled: bool, label: str, data: str | None = None):
             ai_enabled=ai_enabled,
             label=label,
             llm_client=client,
+            previous_cases=previous,
         )
         _persist(session, result)
+        casefile.persist(session, result.cases, run_id)
 
     return result, client
 
@@ -228,6 +234,75 @@ def cmd_ablation(args) -> int:
     return 0
 
 
+def cmd_cases(args) -> int:
+    """What is outstanding, who owns it, and how the money is at stake."""
+    engine = make_engine(args.db)
+    with session_scope(engine) as session:
+        cases = list(casefile.load_previous(session).values())
+
+    if not cases:
+        console.print("No cases yet. Run `unnet recon` first.")
+        return 0
+
+    summary = casefile.summarise(cases)
+    impact = Table(title="Identified — not recovered", header_style="bold")
+    impact.add_column("How the money is at stake")
+    impact.add_column("Cases", justify="right")
+    impact.add_column("Amount", justify="right")
+    labels = {
+        "claimable": "Claimable — a counterparty owes it",
+        "at_risk": "At risk — whereabouts unresolved",
+        "bookkeeping": "Bookkeeping — no money moves",
+        "contestable_loss": "Lost unless contested",
+    }
+    for key, value in sorted(summary["by_impact"].items(), key=lambda kv: -kv[1]["paise"]):
+        impact.add_row(labels.get(key, key), f"{value['count']}", format_inr(value["paise"]))
+    console.print(impact)
+
+    owners = Table(title="Routed to", header_style="bold")
+    owners.add_column("Owner")
+    owners.add_column("Cases", justify="right")
+    owners.add_column("Amount", justify="right")
+    for key, value in sorted(summary["by_owner"].items(), key=lambda kv: -kv[1]["paise"]):
+        owners.add_row(key, f"{value['count']}", format_inr(value["paise"]))
+    console.print(owners)
+
+    console.print(
+        f"[dim]{summary['open_cases']} open, {summary['resolved_cases']} resolved.[/dim]"
+    )
+
+    if args.owner:
+        detail = Table(title=f"Open cases for {args.owner}", header_style="bold")
+        detail.add_column("Key")
+        detail.add_column("Code")
+        detail.add_column("Amount", justify="right")
+        detail.add_column("Ask")
+        for case in sorted(cases, key=lambda c: -c.amount_paise):
+            if case.owner != args.owner or case.status == "resolved":
+                continue
+            detail.add_row(
+                case.case_key[:10], case.code, case.amount_display, case.message[:90]
+            )
+        console.print(detail)
+    return 0
+
+
+def cmd_resolve(args) -> int:
+    """Record that a case was settled, so the next run stops raising it."""
+    import uuid
+
+    engine = make_engine(args.db)
+    with session_scope(engine) as session:
+        updated = casefile.resolve(
+            session, args.case_key, run_id=f"manual-{uuid.uuid4().hex[:6]}", note=args.note
+        )
+    if updated:
+        console.print(f"[green]Resolved[/green] {args.case_key}")
+    else:
+        console.print(f"[red]No case[/red] {args.case_key}")
+    return 0 if updated else 1
+
+
 def cmd_serve(args) -> int:
     import uvicorn
 
@@ -273,6 +348,15 @@ def main(argv: list[str] | None = None) -> int:
     ab.add_argument("--out", default="docs/METRICS.md")
     ab.add_argument("--messy-data", default="data/synthetic_messy")
     ab.set_defaults(func=cmd_ablation)
+
+    cases = sub.add_parser("cases", help="outstanding work, by owner and impact")
+    cases.add_argument("--owner", default="", help="list open cases for one owner")
+    cases.set_defaults(func=cmd_cases)
+
+    res = sub.add_parser("resolve", help="mark a case settled")
+    res.add_argument("case_key")
+    res.add_argument("--note", default="")
+    res.set_defaults(func=cmd_resolve)
 
     serve = sub.add_parser("serve", help="start API and dashboard")
     serve.add_argument("--host", default="127.0.0.1")

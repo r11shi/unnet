@@ -309,3 +309,42 @@ class Run(SQLModel, table=True):
     llm_calls: int = 0
     llm_degraded: bool = False
     notes: dict = Field(default_factory=dict, sa_column=Column(JSON))
+
+
+class CaseFileRow(SQLModel, table=True):
+    """A routed, trackable piece of work — persisted so the loop can close.
+
+    Keyed by ``case_key`` rather than by row id, because every run re-parses the
+    source files from scratch. Identity has to come from what the problem *is*,
+    or run 2 raises the same 130 problems as run 1 and nothing is ever closed.
+    """
+
+    __tablename__ = "case_file"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    run_id: str = Field(index=True)
+    case_key: str = Field(index=True)
+
+    code: str = Field(index=True)
+    subject_kind: str
+    subject_id: str = Field(index=True)
+
+    owner: str = Field(index=True)
+    impact: str = Field(index=True)
+    action: str
+    message: str
+    amount_paise: int = 0
+
+    #: open | routed | resolved
+    status: str = Field(default="routed", index=True)
+
+    evidence: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    #: The model's unverified explanation, when there is one. Carried so the
+    #: human who picks this up starts from a specific, checkable guess.
+    hypothesis: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+
+    first_seen_run: str = ""
+    last_seen_run: str = ""
+    resolved_run: str = ""
+    resolved_note: str = ""
+    created_at: datetime = Field(default_factory=datetime.utcnow)

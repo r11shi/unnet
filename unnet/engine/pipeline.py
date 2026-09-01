@@ -11,6 +11,7 @@ from typing import Optional
 
 from unnet.agents import resolvers
 from unnet.core.db import AuditLog
+from unnet.engine import casefile
 from unnet.core.models import DecidedBy, ExceptionStatus, Run
 from unnet.engine import netting, tier1, tier2, tier3
 from unnet.engine.context import ReconContext
@@ -42,6 +43,7 @@ class ReconResult:
     run: Run
     netting: netting.NettingResult
     specs: dict[str, MappingSpec] = field(default_factory=dict)
+    cases: list = field(default_factory=list)
 
 
 def reconcile(
@@ -52,6 +54,7 @@ def reconcile(
     ai_enabled: bool = True,
     label: str = "",
     llm_client=None,
+    previous_cases: dict | None = None,
 ) -> ReconResult:
     """Run one pass.
 
@@ -150,6 +153,10 @@ def reconcile(
 
     netting_result = netting.run(ctx)
 
+    # Everything still unresolved becomes a routed, trackable case. This is
+    # the step that turns a report into a loop.
+    cases = casefile.build_cases(ctx, run_id, previous_cases)
+
     duration_ms = int((time.perf_counter() - started) * 1000)
     run = _summarise(ctx, netting_result, duration_ms, ai_enabled=ai_enabled, label=label)
 
@@ -211,7 +218,10 @@ def reconcile(
             ),
         }
 
-    return ReconResult(ctx=ctx, run=run, netting=netting_result, specs=specs)
+    run.notes = {**run.notes, "cases": casefile.summarise(cases)}
+    return ReconResult(
+        ctx=ctx, run=run, netting=netting_result, specs=specs, cases=cases
+    )
 
 
 def _summarise(
