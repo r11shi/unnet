@@ -29,6 +29,7 @@ from unnet.core.models import (
     SettlementLine,
 )
 from unnet.core.money import format_inr
+from unnet.engine import casefile
 
 app = FastAPI(title="Unnet", version="0.1.0")
 engine = make_engine(os.environ.get("UNNET_DB", "data/unnet.db"))
@@ -428,6 +429,83 @@ def ask(question: Question):
     with _session() as session:
         rid = _resolve(session, question.run_id)
         return answer(session, rid, question.question)
+
+
+@app.get("/api/cases")
+def cases(owner: str | None = None, impact: str | None = None, status: str | None = None):
+    """Outstanding work, routed. This is the landing view for a reason: it is
+    the only screen that answers "what do I do now"."""
+    with _session() as session:
+        everything = casefile.load_previous(session)
+        rows = list(everything.values())
+
+    summary = casefile.summarise(rows)
+    def keep(case) -> bool:
+        if owner and case.owner != owner:
+            return False
+        if impact and case.impact != impact:
+            return False
+        if status:
+            return case.status == status
+        # Default view is work still to do; settled cases are available via
+        # ?status=resolved rather than cluttering the queue.
+        return case.status != "resolved"
+
+    shown = sorted((c for c in rows if keep(c)), key=lambda c: -c.amount_paise)
+
+    return {
+        "summary": summary,
+        "items": [
+            {
+                "case_key": c.case_key,
+                "code": c.code,
+                "owner": c.owner,
+                "impact": c.impact,
+                "status": c.status,
+                "subject_kind": c.subject_kind,
+                "subject_id": c.subject_id,
+                "amount_paise": c.amount_paise,
+                "amount_display": c.amount_display,
+                "action": c.action,
+                "message": c.message,
+                "hypothesis": c.hypothesis,
+                "first_seen_run": c.first_seen_run,
+                "last_seen_run": c.last_seen_run,
+                "resolved_run": c.resolved_run,
+            }
+            for c in shown[:400]
+        ],
+    }
+
+
+class Resolution(BaseModel):
+    note: str = ""
+
+
+@app.post("/api/cases/{case_key}/resolve")
+def resolve_case(case_key: str, resolution: Resolution):
+    """Settle a case. The next run will see it settled and not raise it again —
+    which is the whole point of tracking identity across runs."""
+    import uuid
+
+    with _session() as session:
+        run_id = f"dashboard-{uuid.uuid4().hex[:6]}"
+        updated = casefile.resolve(session, case_key, run_id=run_id, note=resolution.note)
+        if not updated:
+            raise HTTPException(404, f"No case {case_key}")
+
+        audit = AuditLog(session, run_id)
+        audit.record(
+            stage="case_resolution",
+            subject_kind="case_file",
+            subject_id=case_key,
+            decision="resolved by a human in the dashboard",
+            decided_by=DecidedBy.HUMAN,
+            decider_ref="dashboard",
+            evidence={"note": resolution.note},
+        )
+        session.commit()
+    return {"ok": True, "case_key": case_key, "status": "resolved"}
 
 
 @app.get("/api/health")

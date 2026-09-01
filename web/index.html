@@ -154,6 +154,7 @@ pre.json {
 
 <script>
 const VIEWS = [
+  ["cases",      "◈", "Cases"],
   ["overview",   "◧", "Overview"],
   ["unnetting",  "⌸", "Un-netting"],
   ["matches",    "⇄", "Matches"],
@@ -162,7 +163,7 @@ const VIEWS = [
   ["audit",      "☰", "Audit trail"],
 ];
 
-const S = { view: "overview", summary: null, waterfall: null, batch: 0, cache: {} };
+const S = { view: "cases", summary: null, waterfall: null, batch: 0, cache: {} };
 
 // ---------- helpers ----------
 const api = async (p, o) => (await fetch(p, o)).json();
@@ -271,6 +272,84 @@ function waterfallSVG(steps) {
 }
 
 // ---------- views ----------
+async function viewCases() {
+  const q = S.cache.caseQ || {};
+  const params = new URLSearchParams();
+  if (q.owner) params.set("owner", q.owner);
+  if (q.impact) params.set("impact", q.impact);
+  if (q.status) params.set("status", q.status);
+  const d = await api("/api/cases?" + params);
+  const sm = d.summary;
+
+  const IMPACTS = {
+    claimable:        ["Claimable",       "acc",  "A counterparty owes this back — a claim can be filed today."],
+    at_risk:          ["At risk",         "warn", "Real money whose whereabouts are unresolved."],
+    contestable_loss: ["Lost unless contested", "bad", "Gone unless someone disputes it in time."],
+    bookkeeping:      ["Bookkeeping",     "",     "No money moves; the books are wrong and need correcting."],
+  };
+
+  let h = `<div class="head"><h2>Outstanding work</h2>
+    <p>Every break the run could not close, routed to whoever can actually fix it and tracked by an identity that
+       survives across runs — so a case settled once does not come back tomorrow.</p></div>`;
+
+  h += `<div class="callout"><b>Identified, not recovered.</b> Recovery happens when a bank credits the money back,
+        which is not an event this system can observe. These four figures are also never summed: a chargeback already
+        lost and a fee a supplier owes back are not the same rupee.</div>`;
+
+  h += `<div class="tiles">`;
+  for (const [key, [label, cls, blurb]] of Object.entries(IMPACTS)) {
+    const v = sm.by_impact[key] || { count: 0, paise: 0 };
+    h += `<div class="tile ${cls}"><div class="k">${label}</div>
+          <div class="v">${inr(v.paise, { noPaise: true })}</div>
+          <div class="s">${v.count} case${v.count === 1 ? "" : "s"} · ${esc(blurb)}</div></div>`;
+  }
+  h += `<div class="tile good"><div class="k">Closed</div><div class="v">${num(sm.resolved_cases)}</div>
+        <div class="s">settled and not re-raised</div></div></div>`;
+
+  h += `<div class="filters">
+    <label>Owner</label><select id="cOwner"><option value="">all</option>`;
+  for (const [owner, v] of Object.entries(sm.by_owner).sort((a, b) => b[1].paise - a[1].paise)) {
+    h += `<option value="${esc(owner)}" ${q.owner === owner ? "selected" : ""}>${esc(owner)} (${v.count})</option>`;
+  }
+  h += `</select><label>Impact</label><select id="cImpact"><option value="">all</option>`;
+  for (const key of Object.keys(IMPACTS)) {
+    h += `<option value="${key}" ${q.impact === key ? "selected" : ""}>${IMPACTS[key][0]}</option>`;
+  }
+  h += `</select><label>Status</label><select id="cStatus">
+      <option value="" ${!q.status ? "selected" : ""}>open</option>
+      <option value="resolved" ${q.status === "resolved" ? "selected" : ""}>resolved</option>
+    </select><span class="dim">${num(d.items.length)} shown</span></div>`;
+
+  h += `<div class="panel"><div class="body scroll" style="padding:0"><table><thead><tr>
+    <th>Owner</th><th>Code</th><th class="num">Amount</th><th>The ask</th><th>Age</th><th></th>
+    </tr></thead><tbody>`;
+  for (const c of d.items) {
+    const hyp = c.hypothesis
+      ? `<div style="margin-top:7px;padding:8px 10px;background:var(--panel-2);border-radius:6px;border-left:2px solid var(--violet)">
+           <div class="dim" style="font-size:11px">UNVERIFIED HYPOTHESIS — ${esc(c.hypothesis.produced_by)}</div>
+           <div style="margin:3px 0 4px">${esc(c.hypothesis.reasoning || "")}</div>
+           <div class="mono" style="font-size:11px">${c.hypothesis.components.map(x =>
+             `${esc(x.ref)} ${inr(x.amount_paise, { noPaise: true })}`).join(" + ")}</div>
+           <div class="dim" style="font-size:11px;margin-top:4px">Sums exactly, but rests on a component in no record.
+             A human confirms it; the system will not.</div>
+         </div>` : "";
+    h += `<tr>
+      <td><span class="pill soft">${esc(c.owner)}</span></td>
+      <td class="mono">${esc(c.code)}<div class="dim" style="font-size:10px">${esc(c.subject_id)}</div></td>
+      <td class="num">${esc(c.amount_display)}</td>
+      <td style="max-width:520px"><div><b>${esc(c.action)}</b></div>
+        <div class="muted" style="margin-top:3px">${esc(c.message)}</div>${hyp}</td>
+      <td class="mono" style="font-size:10.5px">${c.first_seen_run === c.last_seen_run ? "new" : "carried"}</td>
+      <td>${c.status === "resolved"
+        ? `<span class="pill ok">resolved</span>`
+        : `<button class="act" data-case="${esc(c.case_key)}">Settle</button>`}</td>
+    </tr>`;
+  }
+  if (!d.items.length) h += `<tr><td colspan="6"><div class="empty">Nothing outstanding here.</div></td></tr>`;
+  h += `</tbody></table></div></div>`;
+  return h;
+}
+
 async function viewOverview() {
   const s = S.summary, r = s.run;
   const matchRate = r.orders_count ? r.matched_count / (r.orders_count + r.settlement_lines_count + r.bank_txns_count) : 0;
@@ -549,7 +628,7 @@ async function viewAudit() {
 
 // ---------- wiring ----------
 const RENDER = {
-  overview: viewOverview, unnetting: viewUnnetting, matches: viewMatches,
+  cases: viewCases, overview: viewOverview, unnetting: viewUnnetting, matches: viewMatches,
   exceptions: viewExceptions, ask: viewAsk, audit: viewAudit,
 };
 
@@ -557,6 +636,23 @@ function bind() {
   const on = (id, ev, fn) => { const n = document.getElementById(id); if (n) n.addEventListener(ev, fn); };
 
   on("batchSel", "change", e => { S.batch = +e.target.value; render(); });
+
+  const cq = () => { S.cache.caseQ = {
+    owner: document.getElementById("cOwner").value,
+    impact: document.getElementById("cImpact").value,
+    status: document.getElementById("cStatus").value,
+  }; render(); };
+  on("cOwner", "change", cq); on("cImpact", "change", cq); on("cStatus", "change", cq);
+
+  document.querySelectorAll("[data-case]").forEach(b => {
+    b.addEventListener("click", async () => {
+      await api(`/api/cases/${b.getAttribute("data-case")}/resolve`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ note: "settled from the dashboard" }),
+      });
+      render();
+    });
+  });
 
   const mq = () => { S.cache.matchQ = {
     tier: document.getElementById("fTier").value,
