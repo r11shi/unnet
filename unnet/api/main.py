@@ -12,7 +12,6 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
-
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
