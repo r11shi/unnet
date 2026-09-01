@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+
+# The SQLite database is a build artefact — `make recon` regenerates it.
+data/*.db
+data/*.db-wal
+data/*.db-shm
+
+node_modules/
+web/.vite/
+
+.env
+.DS_Store
