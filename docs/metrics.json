@@ -1,7 +1,7 @@
 {
   "label": "rules + model",
   "ai_enabled": true,
-  "duration_ms": 723,
+  "duration_ms": 924,
   "links": [
     {
       "name": "Tier 2 \u2014 settlement line to order",
@@ -127,7 +127,7 @@
     "cassette_hits": 3,
     "live_calls": 0,
     "failures": 0,
-    "tokens": 5035,
+    "tokens": 4895,
     "rate_limit_wait_s": 0.0,
     "rpm_cap": 10,
     "degraded": false,
@@ -184,7 +184,7 @@
     "auto_match_rate": 1.0,
     "false_match_rate": 0.0,
     "value_reconciled_pct": 0.985903,
-    "throughput_records_per_sec": 4390.0,
+    "throughput_records_per_sec": 3435.1,
     "total_links_produced": 1580,
     "total_links_correct": 1580,
     "total_links_wrong": 0,

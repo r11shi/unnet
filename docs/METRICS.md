@@ -13,8 +13,8 @@
 | Links wrong | 0 |
 | Value reconciled | ₹1,53,97,905.00 (98.59%) |
 | Value left in exceptions | ₹8,09,392.28 |
-| Wall clock | 1,015 ms |
-| Throughput | 3,127 records/sec |
+| Wall clock | 943 ms |
+| Throughput | 3,366 records/sec |
 
 ## Links, by tier
 
@@ -94,7 +94,7 @@ The same fixtures, the same seed, one flag different. This is the honest test of
 | Exceptions still open | 130 | 128 | -2 |
 | Closed by model | 0 | 0 | +0 |
 | Rejected by verifier | 0 | 0 | +0 |
-| Wall clock (ms) | 888 | 1,015 | +127 |
+| Wall clock (ms) | 965 | 943 | -22 |
 
 Model calls: 3 (3 served from cassette, 0 live). Degraded: False.
 

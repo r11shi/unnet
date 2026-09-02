@@ -20,6 +20,7 @@ reconcile the books is to DROP TABLE gets an error, not a migration.
 from __future__ import annotations
 
 import re
+from contextlib import contextmanager
 
 from sqlalchemy import text
 from sqlmodel import Session, select
@@ -41,6 +42,18 @@ ALLOWED_TABLES = {
 
 FORBIDDEN = re.compile(
     r"\b(insert|update|delete|drop|alter|create|replace|attach|detach|pragma|vacuum)\b",
+    re.IGNORECASE,
+)
+
+#: SQLite functions that escape the sandbox without ever looking like a write.
+#: `load_extension` loads an arbitrary shared object; the fileio extension's
+#: `readfile`/`writefile` reach the filesystem. Statement shape and a table
+#: allow-list say nothing about any of them — `SELECT load_extension('x')` is a
+#: perfectly well-formed SELECT over no tables at all. Python's sqlite3 disables
+#: extension loading by default, so this is depth rather than the only guard,
+#: which is exactly why it should not be left to the build.
+FORBIDDEN_FUNCTIONS = re.compile(
+    r"\b(load_extension|readfile|writefile|edit|fts3_tokenizer|zipfile|sqlite_compileoption\w*)\s*\(",
     re.IGNORECASE,
 )
 
@@ -301,9 +314,14 @@ def _model_answer(session: Session, run_id: str, question: str) -> dict:
         return _result(f"I refused to run that query: {reason}", [], source="refused", sql=sql)
 
     try:
-        result = session.exec(text(f"SELECT * FROM ({sql}) LIMIT {MAX_ROWS}"))
-        columns = list(result.keys())
-        rows = [dict(zip(columns, row)) for row in result.fetchall()]
+        # Belt and braces. `_is_safe` reasons about the text of a statement a
+        # model wrote, and text analysis is exactly the kind of guard that gets
+        # walked around. `query_only` makes the database itself refuse a write,
+        # so a bypass of the regex is still not a way into the ledger.
+        with _read_only(session):
+            result = session.exec(text(f"SELECT * FROM ({sql}) LIMIT {MAX_ROWS}"))
+            columns = list(result.keys())
+            rows = [dict(zip(columns, row)) for row in result.fetchall()]
     except Exception as exc:  # noqa: BLE001 - surface the SQL error to the user
         return _result(f"That query failed: {exc}", [], source="sql_error", sql=sql)
 
@@ -313,6 +331,20 @@ def _model_answer(session: Session, run_id: str, question: str) -> dict:
         source=f"model:{response.decider_ref}",
         sql=sql,
     )
+
+
+@contextmanager
+def _read_only(session):
+    """Run a block with the SQLite connection refusing every write.
+
+    Scoped rather than global: the same session is used by the rest of the API,
+    which legitimately writes.
+    """
+    session.exec(text("PRAGMA query_only = ON"))
+    try:
+        yield
+    finally:
+        session.exec(text("PRAGMA query_only = OFF"))
 
 
 def _is_safe(sql: str) -> tuple[bool, str]:
@@ -325,6 +357,8 @@ def _is_safe(sql: str) -> tuple[bool, str]:
         return False, "not a SELECT"
     if FORBIDDEN.search(sql):
         return False, "contains a write or schema operation"
+    if FORBIDDEN_FUNCTIONS.search(sql):
+        return False, "calls a SQLite function that can reach outside the database"
 
     referenced = set(re.findall(r"\b(?:from|join)\s+([a-zA-Z_][a-zA-Z0-9_]*)", sql, re.IGNORECASE))
     unknown = referenced - ALLOWED_TABLES

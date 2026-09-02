@@ -119,6 +119,20 @@ honest "I cannot explain this" is the correct answer and costs nothing.
 """
 
 
+def _as_int(value, default: int) -> int:
+    """Coerce a model-supplied number, or fall back.
+
+    `int("1180")` works and `int("about eleven rupees")` raises, in the middle
+    of a reconciliation. A component whose amount cannot be read becomes zero,
+    which the verifier then rejects for not summing — the failure lands where
+    failures are already handled instead of aborting the run.
+    """
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 class TriageAgent:
     """Propose, get verified, revise once, then stop.
 
@@ -199,12 +213,21 @@ class TriageAgent:
                 exception.evidence = {**(exception.evidence or {}), "agent_trace": trace}
                 return
 
-            raw_components = response.data.get("components") or []
+            # A model's reply is untrusted structure, not just untrusted text.
+            # Structured-output mode makes the right shape likely, not certain,
+            # and the local OpenAI-compatible path parses whatever JSON comes
+            # back — a bare array here used to take the whole reconciliation
+            # down with an AttributeError. A reply Unnet cannot read is an
+            # abstention, which is a state the loop already knows how to end in.
+            payload = response.data if isinstance(response.data, dict) else {}
+            raw_components = payload.get("components")
+            if not isinstance(raw_components, list):
+                raw_components = []
             if not raw_components:
                 # Abstention, which the prompt explicitly invites when nothing
                 # sums. An honest refusal is a terminal state, not a failure.
                 exception.verifier_verdict = "abstained"
-                exception.verifier_reason = str(response.data.get("reasoning", ""))[:400]
+                exception.verifier_reason = str(payload.get("reasoning", ""))[:400]
                 trace.append(
                     {
                         "step": attempt,
@@ -226,15 +249,15 @@ class TriageAgent:
                     Component(
                         kind=str(c.get("kind", "")),
                         ref=str(c.get("ref", "")),
-                        amount_paise=int(c.get("amount_paise", 0)),
+                        amount_paise=_as_int(c.get("amount_paise"), 0),
                         note=str(c.get("note", "")),
                     )
                     for c in raw_components
                     if isinstance(c, dict)
                 ],
-                reasoning=str(response.data.get("reasoning", ""))[:1000],
+                reasoning=str(payload.get("reasoning", ""))[:1000],
                 produced_by=f"model:{response.decider_ref}",
-                confidence=int(response.data.get("confidence") or 600),
+                confidence=_as_int(payload.get("confidence"), 600),
             )
             if attempt == 1:
                 self.proposed += 1
