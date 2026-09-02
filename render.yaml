@@ -1,15 +1,26 @@
 # One-click deploy to Render's free tier.
 #
-# The demo is read-only and needs no secrets: the container builds its own
-# fixtures and runs a full reconciliation at image-build time, and the model
-# layer replays committed cassettes rather than calling out.
+# The demo builds its own fixtures and runs a full reconciliation at image-build
+# time, and the model layer replays committed cassettes rather than calling out,
+# so the service needs no secrets to *serve*.
+#
+# It does need one to *accept a write*. With UNNET_ENV=production and no
+# UNNET_ADMIN_TOKEN, case actions return 503 rather than silently exposing an
+# unauthenticated mutation endpoint on a finance system. Set the token in the
+# Render dashboard to enable settling cases on the live demo.
 services:
   - type: web
     name: unnet
     runtime: docker
     plan: free
     dockerfilePath: ./Dockerfile
-    healthCheckPath: /api/health
+    # Readiness, not liveness: a process that is up but has no run to show
+    # should not receive traffic.
+    healthCheckPath: /api/ready
     envVars:
       - key: UNNET_LLM_PROVIDER
         value: offline
+      - key: UNNET_ENV
+        value: production
+      - key: UNNET_ADMIN_TOKEN
+        sync: false          # set in the dashboard; never committed

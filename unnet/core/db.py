@@ -25,7 +25,51 @@ def make_engine(db_path: Path | str = DEFAULT_DB_PATH, *, echo: bool = False):
         connect_args={"check_same_thread": False},
     )
     SQLModel.metadata.create_all(engine)
+    _add_missing_columns(engine)
     return engine
+
+
+def _add_missing_columns(engine) -> list[str]:
+    """Bring an existing database up to the current model.
+
+    ``create_all`` creates missing *tables* and silently ignores missing
+    *columns*, so a database written before a field was added keeps working
+    until the first query names that column — and then fails at runtime, in
+    production, on a table full of real data.
+
+    Every schema change in this project so far has been additive, and SQLite's
+    ``ALTER TABLE ADD COLUMN`` is safe and instant, so that is the whole
+    migration story. It is deliberately not Alembic: one file of version
+    history for a prototype with an additive-only schema is machinery without a
+    problem. The day a column needs renaming or dropping, this stops being
+    enough and should be replaced rather than extended.
+    """
+    from sqlalchemy import inspect, text
+
+    added: list[str] = []
+    inspector = inspect(engine)
+    existing_tables = set(inspector.get_table_names())
+
+    with engine.begin() as connection:
+        for table_name, table in SQLModel.metadata.tables.items():
+            if table_name not in existing_tables:
+                continue
+            have = {c["name"] for c in inspector.get_columns(table_name)}
+            for column in table.columns:
+                if column.name in have:
+                    continue
+                ddl = column.type.compile(engine.dialect)
+                default = ""
+                if not column.nullable:
+                    # A NOT NULL column cannot be added to a populated table
+                    # without a default; pick a harmless one by type.
+                    literal = "0" if "INT" in ddl.upper() or "FLOAT" in ddl.upper() else "\'\'"
+                    default = f" NOT NULL DEFAULT {literal}"
+                connection.execute(
+                    text(f'ALTER TABLE "{table_name}" ADD COLUMN "{column.name}" {ddl}{default}')
+                )
+                added.append(f"{table_name}.{column.name}")
+    return added
 
 
 @contextmanager

@@ -10,11 +10,12 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
+from unnet.api.auth import require_write, writes_enabled
 from unnet.core.db import AuditLog, make_engine
 from unnet.core.models import (
     AuditEntry,
@@ -269,7 +270,9 @@ class Decision(BaseModel):
 
 
 @app.post("/api/exceptions/{exception_id}/decision")
-def decide(exception_id: int, decision: Decision):
+def decide(
+    exception_id: int, decision: Decision, actor: str = Depends(require_write)
+):
     """An analyst's call. Appends to the audit trail; never edits history."""
     with _session() as session:
         exception = session.get(ReconException, exception_id)
@@ -290,7 +293,7 @@ def decide(exception_id: int, decision: Decision):
             subject_id=exception.subject_id,
             decision=f"{'accepted' if decision.accept else 'rejected'}: {exception.code.value}",
             decided_by=DecidedBy.HUMAN,
-            decider_ref="dashboard",
+            decider_ref=f"dashboard:{actor}",
             evidence={"note": decision.note, "exception_id": exception_id},
         )
         session.commit()
@@ -483,7 +486,9 @@ class Resolution(BaseModel):
 
 
 @app.post("/api/cases/{case_key}/resolve")
-def resolve_case(case_key: str, resolution: Resolution):
+def resolve_case(
+    case_key: str, resolution: Resolution, actor: str = Depends(require_write)
+):
     """Settle a case. The next run will see it settled and not raise it again —
     which is the whole point of tracking identity across runs."""
     import uuid
@@ -501,7 +506,7 @@ def resolve_case(case_key: str, resolution: Resolution):
             subject_id=case_key,
             decision="resolved by a human in the dashboard",
             decided_by=DecidedBy.HUMAN,
-            decider_ref="dashboard",
+            decider_ref=f"dashboard:{actor}",
             evidence={"note": resolution.note},
         )
         session.commit()
@@ -510,7 +515,35 @@ def resolve_case(case_key: str, resolution: Resolution):
 
 @app.get("/api/health")
 def health():
+    """Liveness: the process is up. Deliberately does no I/O."""
     return {"ok": True, "dashboard": WEB_INDEX.exists()}
+
+
+@app.get("/api/ready")
+def ready():
+    """Readiness: can this instance actually serve a request?
+
+    Separate from liveness because they fail for different reasons and want
+    different responses — a process that is up but has no run to show should
+    not receive traffic, but restarting it will not help.
+    """
+    from unnet.llm.provider import CassetteStore
+
+    checks = {"database": False, "run_present": False, "cassettes": 0}
+    try:
+        with _session() as session:
+            run = session.exec(select(Run).order_by(Run.id.desc())).first()
+            checks["database"] = True
+            checks["run_present"] = run is not None
+    except Exception as exc:  # noqa: BLE001 - readiness reports, never raises
+        checks["error"] = str(exc)[:200]
+
+    checks["cassettes"] = CassetteStore().count()
+    checks["writes_enabled"] = writes_enabled()
+    ok = checks["database"] and checks["run_present"]
+    if not ok:
+        raise HTTPException(503, detail=checks)
+    return {"ok": True, **checks}
 
 
 # --------------------------------------------------------------------------- #
