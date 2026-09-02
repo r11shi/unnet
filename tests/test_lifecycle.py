@@ -161,3 +161,81 @@ def test_ageing_survives_across_runs(tmp_path):
     for case in again:
         if case.case_key in original:
             assert case.first_seen_at == original[case.case_key]
+
+
+# --------------------------------------------------------------------------- #
+# Ageing runs on the business clock, not the wall clock.
+# --------------------------------------------------------------------------- #
+
+
+@pytestmark_fixtures
+def test_a_case_is_aged_from_the_money_event_not_from_first_sight(tmp_path):
+    """A fortnight-old chargeback is a fortnight old on the day we install.
+
+    Ageing from ``first_seen_at`` would mean pointing Unnet at a backlog resets
+    every outstanding break to zero days — the queue would look healthy the
+    morning after a deploy precisely because nothing had been fixed.
+    """
+    result = reconcile(SourcePaths.synthetic(FIXTURES), run_id="r1", ai_enabled=False)
+    cases = casefile.build_cases(result.ctx, "r1")
+
+    assert cases, "fixture produced no cases"
+    # Every subject in the fixtures is a row we hold, so every case can be
+    # dated. A case that could not be dated would silently fall back to the
+    # run time, and that fallback should stay an edge case, not the norm.
+    assert all(c.occurred_at is not None for c in cases)
+    # first_seen_at is still today; the age is not.
+    assert max(c.age_days for c in cases) > 7
+
+
+@pytestmark_fixtures
+def test_ageing_is_measured_to_the_data_horizon_not_to_now(tmp_path):
+    """Re-running last month's files must not make last month's breaks older."""
+    result = reconcile(SourcePaths.synthetic(FIXTURES), run_id="r1", ai_enabled=False)
+    cases = casefile.build_cases(result.ctx, "r1")
+
+    as_of = result.ctx.as_of()
+    assert as_of is not None
+    assert all(c.as_of == as_of for c in cases)
+    # Nothing can be aged past the horizon it is measured against, and nothing
+    # in the source data postdates that horizon.
+    for case in cases:
+        assert case.occurred_at <= as_of
+        assert case.age_days == pytest.approx(
+            (as_of - case.occurred_at).total_seconds() / 86400.0
+        )
+
+
+@pytestmark_fixtures
+def test_business_dates_survive_a_round_trip_through_sqlite(tmp_path):
+    engine = make_engine(tmp_path / "dates.db")
+    with session_scope(engine) as session:
+        result = reconcile(SourcePaths.synthetic(FIXTURES), run_id="r1", ai_enabled=False)
+        built = casefile.build_cases(result.ctx, "r1")
+        casefile.persist(session, built, "r1", {})
+    before = {c.case_key: (c.occurred_at, c.as_of, c.ageing_bucket) for c in built}
+
+    with session_scope(engine) as session:
+        reloaded = casefile.load_previous(session)
+
+    assert reloaded
+    for key, (occurred, as_of, bucket) in before.items():
+        case = reloaded[key]
+        assert case.occurred_at == occurred
+        assert case.as_of == as_of
+        # The derived value, not just the stored one: a bucket that changed on
+        # reload would mean the queue reordered itself between runs.
+        assert case.ageing_bucket == bucket
+
+
+def test_an_undateable_subject_falls_back_to_when_we_first_saw_it():
+    """Age is never negative and never unknown, whatever the subject is."""
+    seen = datetime(2026, 8, 1, tzinfo=timezone.utc)
+    case = casefile.CaseFile(
+        case_key="k", code="ON_HOLD", subject_kind="mystery", subject_id="x",
+        owner="finance_ops", impact="at_risk", action="", message="",
+        amount_paise=100, first_seen_at=seen, as_of=seen + timedelta(days=3),
+    )
+    assert case.occurred_at is None
+    assert case.aged_from == seen
+    assert case.age_days == pytest.approx(3.0)

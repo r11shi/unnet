@@ -80,6 +80,56 @@ class ReconContext:
                 self.batch_by_utr[batch.settlement_utr].append(batch)
 
     # ------------------------------------------------------------------ #
+    # Business dates. A reconciliation is run *as of* a date, and ageing is
+    # measured against that date rather than against the wall clock.
+    # ------------------------------------------------------------------ #
+
+    def as_of(self) -> Optional[datetime]:
+        """The business date this run reconciles to.
+
+        The latest date present in the source data, not ``now``. A recon closes
+        a period: if you reconcile last Tuesday's files on Friday, every break
+        is still aged from Tuesday, and re-running the same files next month
+        must not make the same break a month older. Wall-clock ageing would
+        also mean a fixed demo dataset drifts into a single "14d+" bucket and
+        stays there, which is a symptom of the wrong clock, not of the data.
+        """
+        dates = [o.captured_at for o in self.orders]
+        dates += [l.settled_at or l.created_at for l in self.lines]
+        dates += [b.settled_at or b.created_at for b in self.batches]
+        dates += [t.value_date for t in self.bank_txns]
+        real = [d for d in dates if d is not None]
+        return max(real) if real else None
+
+    def occurred_at(self, subject_kind: str, subject_id: str) -> Optional[datetime]:
+        """When the money event behind a case actually happened.
+
+        Ageing has to run from here, not from the moment Unnet first noticed.
+        A chargeback deducted a fortnight ago is a fortnight-old break; if it
+        were aged from first sight, deploying the tool would silently reset
+        every outstanding item to zero days — the same "resets each morning"
+        failure that makes recon queues unreadable, one level up.
+        """
+        if subject_kind == "settlement_line":
+            line = self.lines_by_entity_id.get(subject_id)
+            return (line.settled_at or line.created_at) if line else None
+        if subject_kind == "settlement_batch":
+            batch = self.batch_by_id.get(subject_id)
+            return (batch.settled_at or batch.created_at) if batch else None
+        if subject_kind == "bank_txn":
+            for txn in self.bank_txns:
+                if txn.bank_ref == subject_id:
+                    return txn.value_date
+            return None
+        if subject_kind == "merchant_order":
+            # The subject may be either identifier depending on which side
+            # raised the exception.
+            found = self.orders_by_order_id.get(subject_id) or \
+                self.orders_by_payment_id.get(subject_id)
+            return min((o.captured_at for o in found), default=None) if found else None
+        return None
+
+    # ------------------------------------------------------------------ #
     # Recording. Everything the engine concludes goes through these two, so
     # nothing can reach the output without also reaching the audit trail.
     # ------------------------------------------------------------------ #

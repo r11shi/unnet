@@ -23,7 +23,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from unnet.core.models import EntityType, ExceptionCode
-from unnet.core.money import apply_bps, gst_on
+from unnet.core.money import apply_bps, format_inr, gst_on
 from unnet.engine.context import ReconContext
 
 #: The merchant's contracted MDR, in basis points, by method.
@@ -209,8 +209,8 @@ def _check_fee(ctx: ReconContext, line, rates: dict[str, int]) -> None:
             subject_id=line.entity_id,
             residual_paise=charged_mdr - expected_mdr,
             summary=(
-                f"MDR billed {charged_mdr} paise, rate card says {expected_mdr} paise "
-                f"({rate} bps on {line.amount_paise} paise)."
+                f"MDR billed {format_inr(charged_mdr)}, rate card says "
+                f"{format_inr(expected_mdr)} ({rate} bps on {format_inr(line.amount_paise)})."
             ),
             evidence={
                 "method": line.method,
@@ -233,8 +233,8 @@ def _check_fee(ctx: ReconContext, line, rates: dict[str, int]) -> None:
             subject_id=line.entity_id,
             residual_paise=line.tax_paise - expected_gst,
             summary=(
-                f"GST charged {line.tax_paise} paise, expected {expected_gst} paise "
-                f"(18% of {charged_mdr} paise MDR). Input tax credit needs this to be right."
+                f"GST charged {format_inr(line.tax_paise)}, expected {format_inr(expected_gst)} "
+                f"(18% of {format_inr(charged_mdr)} MDR). Input tax credit needs this to be right."
             ),
             evidence={
                 "mdr_paise": charged_mdr,

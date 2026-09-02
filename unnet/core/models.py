@@ -356,6 +356,13 @@ class CaseFileRow(SQLModel, table=True):
     first_seen_at: datetime = Field(default_factory=datetime.utcnow, index=True)
     last_seen_at: datetime = Field(default_factory=datetime.utcnow)
 
+    #: The business dates ageing is actually computed from: when the money
+    #: event happened, and the date the run reconciles to. Kept separate from
+    #: first_seen_at rather than folded into it, so the record still says
+    #: honestly both when the break happened and when Unnet first saw it.
+    occurred_at: Optional[datetime] = Field(default=None, index=True)
+    as_of: Optional[datetime] = Field(default=None)
+
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 

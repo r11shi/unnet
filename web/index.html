@@ -3,140 +3,182 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Unnet — Razorpay settlement reconciliation</title>
+<title>Unnet — settlement reconciliation</title>
+<!-- The design system specifies Inter. It is loaded non-render-blocking and the
+     stack falls back to the platform UI font, so the dashboard paints instantly
+     and works with no network at all — which matters here, because the demo is
+     meant to run offline and a finance tool should not block first paint on a
+     third-party font server. -->
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" media="print" onload="this.media='all'"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap">
 <style>
+/* ---------------------------------------------------------------------------
+   Tokens lifted from the project's AlignUI Figma library (file
+   RaeyCgqanyZuEnfE3YF8ef, "Component and style guide"), read through the Figma
+   MCP rather than eyeballed: the neutral ramp, the eight semantic hues with
+   their alpha-10/16/24 tints, radius-12, and the Inter / Inter Display pairing.
+   The library has no dashboard page, so the layout here is ours; the system is
+   theirs.
+--------------------------------------------------------------------------- */
 :root {
-  --bg: #0b0f14;
-  --panel: #111820;
-  --panel-2: #161f2a;
-  --line: #22303f;
-  --line-soft: #1a2532;
-  --text: #e6edf3;
-  --muted: #8496a9;
-  --dim: #5d7186;
-  --accent: #35d0ba;
-  --accent-dim: #1d6f65;
-  --warn: #e8b046;
-  --bad: #e5646d;
-  --good: #57c98b;
-  --violet: #9b8cf0;
-  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+  --gray-0:#ffffff; --gray-50:#f7f7f7; --gray-100:#f5f5f5; --gray-200:#ebebeb;
+  --gray-300:#d1d1d1; --gray-400:#a3a3a3; --gray-500:#7b7b7b; --gray-600:#5c5c5c;
+  --gray-700:#333333; --gray-800:#262626; --gray-950:#171717;
+
+  --blue:#476cff;   --blue-a10:#476cff1a;   --blue-a16:#476cff29;
+  --green:#1fc16b;  --green-a10:#1fc16b1a;  --green-a16:#1fc16b29;
+  --red:#fb3748;    --red-a10:#fb37481a;    --red-a16:#fb374829;
+  --orange:#fa7319; --orange-a10:#fa73191a; --orange-a16:#fa731929;
+  --yellow:#fbc64b; --yellow-a10:#fbc64b1a;
+  --purple:#784def; --purple-a10:#784def1a; --purple-a16:#784def29;
+  --teal:#22d3bb;   --teal-a10:#22d3bb1a;
+  --slate-a10:#99a0ae1a; --slate-a16:#99a0ae29;
+
+  --text-strong:var(--gray-950); --text-sub:var(--gray-600); --text-soft:var(--gray-400);
+  --bg-page:var(--gray-50); --bg-surface:var(--gray-0); --bg-weak:var(--gray-100);
+  --stroke-soft:var(--gray-200); --stroke-sub:var(--gray-300);
+
+  --r:12px; --r-sm:8px; --r-pill:999px;
+  --sans:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  --shadow:0 1px 2px rgba(23,23,23,.04), 0 1px 3px rgba(23,23,23,.03);
 }
-* { box-sizing: border-box; }
-html, body { margin: 0; padding: 0; }
-body {
-  background: var(--bg); color: var(--text); font-family: var(--sans);
-  font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased;
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--bg-page); color:var(--text-strong); font-family:var(--sans);
+  font-size:14px; line-height:1.5; -webkit-font-smoothing:antialiased;
+  letter-spacing:-0.006em;
 }
-a { color: var(--accent); }
+a{color:var(--blue);text-decoration:none}
 
 /* ---------- shell ---------- */
-.shell { display: grid; grid-template-columns: 216px 1fr; min-height: 100vh; }
-.side {
-  background: var(--panel); border-right: 1px solid var(--line);
-  padding: 20px 0; display: flex; flex-direction: column;
-}
-.brand { padding: 0 20px 20px; border-bottom: 1px solid var(--line-soft); }
-.brand h1 {
-  margin: 0; font-size: 19px; letter-spacing: -0.02em; font-weight: 650;
-}
-.brand .tag { color: var(--dim); font-size: 11.5px; margin-top: 3px; line-height: 1.35; }
-nav { padding: 12px 10px; display: flex; flex-direction: column; gap: 1px; }
-nav button {
-  all: unset; cursor: pointer; padding: 8px 11px; border-radius: 6px;
-  color: var(--muted); font-size: 13.5px; display: flex; gap: 9px; align-items: center;
-}
-nav button:hover { background: var(--panel-2); color: var(--text); }
-nav button.on { background: var(--accent-dim); color: #eafffb; font-weight: 550; }
-nav button .ic { width: 15px; text-align: center; opacity: .85; font-size: 12px; }
-.side-foot {
-  margin-top: auto; padding: 14px 20px 0; border-top: 1px solid var(--line-soft);
-  color: var(--dim); font-size: 11px; font-family: var(--mono); line-height: 1.6;
-}
-main { padding: 26px 30px 60px; max-width: 1500px; overflow-x: hidden; }
-.head { margin-bottom: 20px; }
-.head h2 { margin: 0 0 4px; font-size: 21px; font-weight: 620; letter-spacing: -0.02em; }
-.head p { margin: 0; color: var(--muted); max-width: 78ch; font-size: 13px; }
+.shell{display:grid;grid-template-columns:236px 1fr;min-height:100vh}
+.side{background:var(--bg-surface);border-right:1px solid var(--stroke-soft);
+  padding:20px 0;display:flex;flex-direction:column;position:sticky;top:0;height:100vh}
+.brand{padding:0 20px 18px;border-bottom:1px solid var(--stroke-soft)}
+.brand h1{margin:0;font-size:18px;font-weight:600;letter-spacing:-0.02em}
+.brand .tag{color:var(--text-soft);font-size:11.5px;margin-top:4px;line-height:1.4}
+nav{padding:12px 12px;display:flex;flex-direction:column;gap:2px}
+nav button{all:unset;cursor:pointer;padding:8px 12px;border-radius:var(--r-sm);
+  color:var(--text-sub);font-size:14px;font-weight:500;display:flex;gap:10px;align-items:center}
+nav button:hover{background:var(--bg-weak);color:var(--text-strong)}
+nav button.on{background:var(--blue-a10);color:var(--blue)}
+nav button .ic{width:16px;text-align:center;font-size:13px;opacity:.9}
+nav .count{margin-left:auto;font-size:11px;color:var(--text-soft);font-variant-numeric:tabular-nums}
+.side-foot{margin-top:auto;padding:14px 20px 0;border-top:1px solid var(--stroke-soft);
+  color:var(--text-soft);font-size:11px;font-family:var(--mono);line-height:1.7}
+main{padding:28px 32px 72px;max-width:1560px;overflow-x:hidden}
 
-/* ---------- primitives ---------- */
-.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(178px, 1fr)); gap: 12px; margin-bottom: 22px; }
-.tile { background: var(--panel); border: 1px solid var(--line); border-radius: 9px; padding: 14px 15px; }
-.tile .k { color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: .07em; }
-.tile .v { font-size: 25px; font-weight: 620; margin-top: 5px; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
-.tile .s { color: var(--muted); font-size: 11.5px; margin-top: 3px; }
-.tile.good .v { color: var(--good); }
-.tile.warn .v { color: var(--warn); }
-.tile.bad  .v { color: var(--bad); }
-.tile.acc  .v { color: var(--accent); }
+.head{margin-bottom:22px;display:flex;justify-content:space-between;align-items:flex-start;gap:24px}
+.head h2{margin:0 0 5px;font-size:24px;font-weight:600;letter-spacing:-0.022em}
+.head p{margin:0;color:var(--text-sub);max-width:80ch;font-size:14px}
+.back{all:unset;cursor:pointer;color:var(--text-sub);font-size:13px;font-weight:500;
+  padding:6px 12px;border:1px solid var(--stroke-soft);border-radius:var(--r-sm);background:var(--bg-surface)}
+.back:hover{background:var(--bg-weak)}
 
-.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 9px; margin-bottom: 18px; }
-.panel > h3 {
-  margin: 0; padding: 13px 16px; border-bottom: 1px solid var(--line-soft);
-  font-size: 13px; font-weight: 600; letter-spacing: -0.01em;
-  display: flex; justify-content: space-between; align-items: center; gap: 12px;
-}
-.panel > h3 .note { color: var(--dim); font-weight: 400; font-size: 11.5px; }
-.panel .body { padding: 15px 16px; }
-.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
-@media (max-width: 1100px) { .grid2 { grid-template-columns: 1fr; } .shell { grid-template-columns: 1fr; } .side { display: none; } }
+/* ---------- surfaces ---------- */
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(196px,1fr));gap:14px;margin-bottom:22px}
+.tile{background:var(--bg-surface);border:1px solid var(--stroke-soft);border-radius:var(--r);
+  padding:16px 18px;box-shadow:var(--shadow)}
+.tile .k{color:var(--text-soft);font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:.06em}
+.tile .v{font-size:26px;font-weight:600;margin-top:7px;letter-spacing:-0.03em;font-variant-numeric:tabular-nums}
+.tile .s{color:var(--text-sub);font-size:12px;margin-top:5px;line-height:1.45}
+.tile.blue .v{color:var(--blue)} .tile.green .v{color:var(--green)}
+.tile.red .v{color:var(--red)}   .tile.orange .v{color:var(--orange)}
+.tile.purple .v{color:var(--purple)}
 
-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
-th {
-  text-align: left; color: var(--dim); font-weight: 550; font-size: 10.5px;
-  text-transform: uppercase; letter-spacing: .06em; padding: 8px 10px;
-  border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--panel);
-}
-td { padding: 7px 10px; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
-tr:last-child td { border-bottom: none; }
-tbody tr:hover { background: var(--panel-2); }
-td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; font-family: var(--mono); }
-.mono { font-family: var(--mono); font-size: 11.5px; }
-.scroll { max-height: calc(100vh - 290px); min-height: 260px; overflow: auto; }
+.panel{background:var(--bg-surface);border:1px solid var(--stroke-soft);
+  border-radius:var(--r);margin-bottom:18px;box-shadow:var(--shadow);overflow:hidden}
+.panel>h3{margin:0;padding:14px 18px;border-bottom:1px solid var(--stroke-soft);
+  font-size:14px;font-weight:600;display:flex;justify-content:space-between;align-items:center;gap:12px}
+.panel>h3 .note{color:var(--text-soft);font-weight:400;font-size:12px}
+.panel .body{padding:18px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.grid-detail{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(300px,.9fr);gap:18px;align-items:start}
+@media (max-width:1180px){.grid2,.grid-detail{grid-template-columns:1fr}
+  .shell{grid-template-columns:1fr}.side{display:none}}
 
-.pill {
-  display: inline-block; padding: 1.5px 7px; border-radius: 20px; font-size: 10.5px;
-  font-weight: 600; letter-spacing: .02em; white-space: nowrap;
-  border: 1px solid transparent;
-}
-.pill.rule  { background: #16302c; color: var(--accent); border-color: #1f4a44; }
-.pill.model { background: #251f46; color: var(--violet); border-color: #372e63; }
-.pill.human { background: #33290f; color: var(--warn); border-color: #4d3d14; }
-.pill.open  { background: #3a1f22; color: var(--bad); border-color: #55292e; }
-.pill.ok    { background: #16321f; color: var(--good); border-color: #1f4a2e; }
-.pill.soft  { background: var(--panel-2); color: var(--muted); border-color: var(--line); }
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;color:var(--text-soft);font-weight:500;font-size:11px;text-transform:uppercase;
+  letter-spacing:.05em;padding:10px 14px;border-bottom:1px solid var(--stroke-soft);
+  position:sticky;top:0;background:var(--bg-surface);z-index:1}
+td{padding:11px 14px;border-bottom:1px solid var(--stroke-soft);vertical-align:top}
+tr:last-child td{border-bottom:none}
+tbody tr.click{cursor:pointer}
+tbody tr.click:hover{background:var(--bg-weak)}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+.mono{font-family:var(--mono);font-size:12px}
+.scroll{max-height:calc(100vh - 300px);min-height:240px;overflow:auto}
 
-.bar { height: 5px; background: var(--line-soft); border-radius: 3px; overflow: hidden; }
-.bar > i { display: block; height: 100%; background: var(--accent); }
+/* Badge — Color x Size, mirroring the library's variant structure. */
+.badge{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:var(--r-pill);
+  font-size:11.5px;font-weight:500;white-space:nowrap;line-height:1.45}
+.badge.gray{background:var(--slate-a10);color:var(--text-sub)}
+.badge.blue{background:var(--blue-a10);color:var(--blue)}
+.badge.green{background:var(--green-a10);color:var(--green)}
+.badge.red{background:var(--red-a10);color:var(--red)}
+.badge.orange{background:var(--orange-a10);color:var(--orange)}
+.badge.purple{background:var(--purple-a10);color:var(--purple)}
+.badge.lg{font-size:13px;padding:5px 12px;font-weight:600}
+.dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex:none}
 
-input, select, textarea, button.act {
-  background: var(--panel-2); border: 1px solid var(--line); color: var(--text);
-  border-radius: 6px; padding: 7px 10px; font-size: 12.5px; font-family: inherit;
-}
-input:focus, select:focus, textarea:focus { outline: 1px solid var(--accent-dim); }
-button.act { cursor: pointer; }
-button.act:hover { border-color: var(--accent-dim); }
-button.act.primary { background: var(--accent-dim); border-color: var(--accent-dim); color: #eafffb; font-weight: 600; }
-.filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
-.filters label { color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+/* Button — Type x Size x State. */
+button.btn{cursor:pointer;font-family:inherit;font-size:13px;font-weight:500;
+  padding:7px 13px;border-radius:var(--r-sm);border:1px solid var(--stroke-sub);
+  background:var(--bg-surface);color:var(--text-strong);transition:background .12s,border-color .12s}
+button.btn:hover{background:var(--bg-weak)}
+button.btn:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
+button.btn.primary{background:var(--gray-950);border-color:var(--gray-950);color:#fff}
+button.btn.primary:hover{background:var(--gray-800)}
+button.btn:disabled{opacity:.45;cursor:not-allowed}
+input,select{background:var(--bg-surface);border:1px solid var(--stroke-sub);color:var(--text-strong);
+  border-radius:var(--r-sm);padding:7px 11px;font-size:13px;font-family:inherit}
+input:focus,select:focus{outline:2px solid var(--blue-a16);border-color:var(--blue)}
+.filters{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
+.filters label{color:var(--text-soft);font-size:11px;text-transform:uppercase;letter-spacing:.05em;font-weight:500}
 
-.empty { color: var(--dim); padding: 26px; text-align: center; font-size: 13px; }
-.muted { color: var(--muted); }
-.dim { color: var(--dim); }
-details.ev { margin-top: 6px; }
-details.ev summary { cursor: pointer; color: var(--dim); font-size: 11.5px; }
-pre.json {
-  background: var(--bg); border: 1px solid var(--line-soft); border-radius: 6px;
-  padding: 10px; overflow: auto; font-size: 11px; font-family: var(--mono);
-  color: var(--muted); margin: 6px 0 0; max-height: 260px;
-}
-.callout {
-  border-left: 2px solid var(--accent); background: var(--panel-2);
-  padding: 10px 13px; border-radius: 0 6px 6px 0; color: var(--muted);
-  font-size: 12.5px; margin-bottom: 16px;
-}
-.callout.warn { border-left-color: var(--warn); }
-.callout b { color: var(--text); font-weight: 600; }
+.bar{height:6px;background:var(--gray-200);border-radius:var(--r-pill);overflow:hidden}
+.bar>i{display:block;height:100%;border-radius:var(--r-pill);background:var(--blue)}
+.empty{color:var(--text-soft);padding:36px;text-align:center;font-size:13.5px}
+.muted{color:var(--text-sub)} .soft{color:var(--text-soft)}
+pre.json{background:var(--bg-weak);border:1px solid var(--stroke-soft);border-radius:var(--r-sm);
+  padding:11px;overflow:auto;font-size:11.5px;font-family:var(--mono);color:var(--text-sub);
+  margin:8px 0 0;max-height:240px}
+details.ev summary{cursor:pointer;color:var(--text-soft);font-size:12px;margin-top:6px}
+.callout{border:1px solid var(--stroke-soft);border-left:3px solid var(--blue);background:var(--bg-surface);
+  padding:12px 15px;border-radius:0 var(--r-sm) var(--r-sm) 0;color:var(--text-sub);font-size:13px;margin-bottom:18px}
+.callout b{color:var(--text-strong);font-weight:600}
+
+/* Progress Indicator — Step=01..04 in the library, used for case lifecycle. */
+.stepper{display:flex;align-items:center;gap:0;margin:2px 0 4px}
+.step{display:flex;align-items:center;gap:7px;flex:1;min-width:0}
+.step .ring{width:20px;height:20px;border-radius:50%;border:2px solid var(--stroke-sub);
+  flex:none;display:grid;place-items:center;font-size:10px;color:var(--text-soft);background:var(--bg-surface)}
+.step.done .ring{background:var(--blue);border-color:var(--blue);color:#fff}
+.step.now .ring{border-color:var(--blue);color:var(--blue);box-shadow:0 0 0 3px var(--blue-a10)}
+.step .lbl{font-size:11.5px;color:var(--text-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.step.done .lbl,.step.now .lbl{color:var(--text-strong);font-weight:500}
+.step .line{flex:1;height:2px;background:var(--stroke-soft);margin:0 4px;min-width:10px}
+.step.done .line{background:var(--blue)}
+/* A case routed straight to an external party never passes through
+   investigation. Ticking a step it skipped would claim work nobody did. */
+.step.skipped .ring{border-style:dashed;color:var(--text-soft)}
+.step.skipped .lbl{color:var(--text-soft);text-decoration:line-through;text-decoration-color:var(--stroke-sub)}
+
+/* Agent trace */
+.trace{position:relative;padding-left:22px}
+.trace::before{content:"";position:absolute;left:7px;top:6px;bottom:6px;width:2px;background:var(--stroke-soft)}
+.trace .node{position:relative;padding:0 0 16px}
+.trace .node:last-child{padding-bottom:0}
+.trace .node::before{content:"";position:absolute;left:-19px;top:5px;width:10px;height:10px;
+  border-radius:50%;background:var(--bg-surface);border:2px solid var(--stroke-sub)}
+.trace .node.ok::before{background:var(--green);border-color:var(--green)}
+.trace .node.warn::before{background:var(--orange);border-color:var(--orange)}
+.trace .node.bad::before{background:var(--red);border-color:var(--red)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:8px 18px;font-size:13px}
+.kv dt{color:var(--text-soft)} .kv dd{margin:0;font-weight:500}
 </style>
 </head>
 <body>
@@ -144,7 +186,7 @@ pre.json {
   <aside class="side">
     <div class="brand">
       <h1>Unnet</h1>
-      <div class="tag">Un-nets a lumped Razorpay payout back to the order, to the paisa.</div>
+      <div class="tag">Settlement reconciliation and exception workflow</div>
     </div>
     <nav id="nav"></nav>
     <div class="side-foot" id="foot"></div>
@@ -154,581 +196,595 @@ pre.json {
 
 <script>
 const VIEWS = [
-  ["cases",      "◈", "Cases"],
-  ["overview",   "◧", "Overview"],
-  ["unnetting",  "⌸", "Un-netting"],
-  ["matches",    "⇄", "Matches"],
-  ["exceptions", "⚠", "Exceptions"],
-  ["ask",        "✦", "Ask"],
-  ["audit",      "☰", "Audit trail"],
+  ["overview",  "◱", "Overview"],
+  ["cases",     "◈", "Cases"],
+  ["runs",      "⟳", "Runs"],
+  ["unnetting", "⌸", "Un-netting"],
+  ["matches",   "⇄", "Matches"],
+  ["audit",     "☰", "Audit"],
+  ["ask",       "✦", "Ask"],
 ];
 
-const S = { view: "cases", summary: null, waterfall: null, batch: 0, cache: {} };
+const S = { view:"overview", caseKey:null, summary:null, waterfall:null, batch:0, cache:{} };
 
-// ---------- helpers ----------
-const api = async (p, o) => (await fetch(p, o)).json();
-const el = (h) => { const d = document.createElement("div"); d.innerHTML = h.trim(); return d.firstElementChild; };
-const esc = (s) => String(s ?? "").replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
+const api = async (p,o) => (await fetch(p,o)).json();
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
-// Indian digit grouping: ₹12,34,567.89
-function inr(paise, opts = {}) {
-  const neg = paise < 0;
-  const abs = Math.abs(Math.round(paise));
-  const whole = Math.floor(abs / 100), frac = String(abs % 100).padStart(2, "0");
+function inr(paise, o={}) {
+  const neg = paise < 0, abs = Math.abs(Math.round(paise));
+  const whole = Math.floor(abs/100), frac = String(abs%100).padStart(2,"0");
   let d = String(whole), out;
   if (d.length > 3) {
-    let head = d.slice(0, -3); const tail = d.slice(-3); const g = [];
-    while (head.length > 2) { g.unshift(head.slice(-2)); head = head.slice(0, -2); }
+    let head = d.slice(0,-3); const tail = d.slice(-3); const g = [];
+    while (head.length > 2) { g.unshift(head.slice(-2)); head = head.slice(0,-2); }
     if (head) g.unshift(head);
     out = g.join(",") + "," + tail;
   } else out = d;
-  const sign = neg ? "−" : (opts.signed ? "+" : "");
-  return `${sign}₹${out}${opts.noPaise ? "" : "." + frac}`;
+  return `${neg?"−":(o.signed?"+":"")}₹${out}${o.noPaise?"":"."+frac}`;
 }
-const pct = (n) => (n * 100).toFixed(2) + "%";
-const num = (n) => Number(n ?? 0).toLocaleString("en-IN");
+const pct = n => (n*100).toFixed(1)+"%";
+const day = t => t ? String(t).slice(0,10) : "\u2014";
+const ageText = d => d < 1 ? "today" : Math.round(d) + " days";
+const num = n => Number(n ?? 0).toLocaleString("en-IN");
 
-function decidedPill(v) {
-  const cls = v === "model" ? "model" : v === "human" ? "human" : "rule";
-  return `<span class="pill ${cls}">${esc(v)}</span>`;
+const STATUSES = [
+  ["detected","Detected"],["investigating","Investigating"],
+  ["routed","Routed"],["awaiting_action","Awaiting action"],["resolved","Resolved"],
+];
+const STATUS_LABEL = Object.fromEntries(STATUSES);
+const STATUS_TONE = {detected:"gray",investigating:"purple",routed:"blue",
+                     awaiting_action:"orange",resolved:"green"};
+const PRIO_TONE = {P1:"red",P2:"orange",P3:"gray"};
+const IMPACTS = {
+  claimable:["Claimable","blue","A counterparty owes this back."],
+  at_risk:["At risk","orange","Real money, whereabouts unresolved."],
+  contestable_loss:["Lost unless contested","red","Gone unless someone disputes it."],
+  bookkeeping:["Bookkeeping","gray","No money moves; the books are wrong."],
+};
+const VERDICT = {
+  resolved_verified:["VERIFIED","green","Every component was read back from a ledger row."],
+  hypothesis:["HYPOTHESIS","purple","Sums exactly, but rests on something in no record. A human decides."],
+  abstained:["ABSTAINED","gray","The model declined to guess."],
+  not_attempted:["NOT ATTEMPTED","gray","No model was available."],
+};
+const verdictOf = v => VERDICT[v] || (v ? ["REJECTED","red","Arithmetic or citation failed."] : null);
+
+const badge = (t,tone,dot) => `<span class="badge ${tone}">${dot?'<i class="dot"></i>':""}${esc(t)}</span>`;
+const statusBadge = s => badge(STATUS_LABEL[s]||s, STATUS_TONE[s]||"gray", true);
+
+function stepper(status, visited) {
+  // `visited` is the set of states the case's own history records. A step
+  // before the current one that never appears there was skipped, not
+  // completed — most cases go straight from detection to an owner, and
+  // showing a tick against "Investigating" would credit work nobody did.
+  const seen = new Set(visited || []);
+  const flow = STATUSES.filter(([k]) => k !== "detected" || status === "detected");
+  const at = flow.findIndex(([k]) => k === status);
+  return `<div class="stepper">` + flow.map(([k,label],i) => {
+    const cls = i === at ? "now" : i < at ? (seen.has(k) ? "done" : "skipped") : "";
+    const mark = i === at ? i+1 : i < at ? (seen.has(k) ? "✓" : "–") : i+1;
+    return `<div class="step ${cls}"><div class="ring">${mark}</div>
+      <div class="lbl">${esc(label)}</div>${i<flow.length-1?'<div class="line"></div>':""}</div>`;
+  }).join("") + `</div>`;
 }
-function statusPill(s) {
-  const map = {
-    open: "open", ai_rejected: "open",
-    auto_resolved: "ok", ai_resolved: "ok", accepted_by_human: "ok",
-    rolled_forward: "soft", rejected_by_human: "soft",
-  };
-  return `<span class="pill ${map[s] || "soft"}">${esc(String(s).replace(/_/g, " "))}</span>`;
-}
 
-// ---------- waterfall chart (hand-drawn SVG) ----------
-//
-// The y-axis deliberately does NOT start at zero. On a real payout the gross is
-// ~₹7,00,000 and the MDR is ~₹5,000, so a zero-based axis renders every
-// deduction — the entire point of the chart — as a one-pixel hairline. The axis
-// is instead framed on the band the money actually moves through, and labelled
-// as such, which is the standard treatment for a waterfall whose start and end
-// are close together.
-function waterfallSVG(steps) {
-  const W = 940, H = 330, PADL = 74, PADR = 14, PADB = 74, PADT = 26;
-  const n = steps.length;
-  const plotW = W - PADL - PADR;
-  const bw = Math.max(22, Math.min(66, plotW / n - 16));
-  const gap = n > 1 ? (plotW - bw * n) / (n - 1) : 0;
+// ---------- Overview ----------
+async function viewOverview() {
+  const s = S.summary, r = s.run;
+  const c = await api("/api/cases");
+  const sm = c.summary;
+  const runs = (await api("/api/runs")).items;
+  const latest = runs[0] || {};
+  const records = r.orders_count + r.settlement_lines_count + r.bank_txns_count;
 
-  // Each intermediate bar floats between the running total before and after it.
-  let run = 0; const bars = [];
-  for (const s of steps) {
-    if (s.kind === "start" || s.kind === "total") {
-      bars.push({ ...s, from: null, to: s.delta_paise });
-      run = s.delta_paise;
-    } else {
-      bars.push({ ...s, from: run, to: run + s.delta_paise });
-      run += s.delta_paise;
-    }
+  let h = `<div class="head"><div>
+    <h2>Overview</h2>
+    <p>Reconciliation health and the work it produced. Everything below comes from the
+       latest run; figures are <b>identified</b>, never recovered.</p></div></div>`;
+
+  h += `<div class="tiles">
+    <div class="tile green"><div class="k">Reconciled</div>
+      <div class="v">${inr(r.value_reconciled_paise,{noPaise:1})}</div>
+      <div class="s">${pct(r.gross_paise ? r.value_reconciled_paise/r.gross_paise : 0)} of ${inr(r.gross_paise,{noPaise:1})} gross</div></div>
+    <div class="tile"><div class="k">Records</div><div class="v">${num(records)}</div>
+      <div class="s">${num(r.matched_count)} linked in ${num(r.duration_ms)} ms</div></div>
+    <div class="tile ${sm.open_cases?"orange":"green"}"><div class="k">Open cases</div>
+      <div class="v">${num(sm.open_cases)}</div>
+      <div class="s">${num(sm.resolved_cases)} settled · oldest ${sm.oldest_open_days}d</div></div>
+    <div class="tile red"><div class="k">Needs attention</div>
+      <div class="v">${num((sm.by_priority||{}).P1||0)}</div><div class="s">P1 by value or age</div></div>
+    <div class="tile purple"><div class="k">Model calls</div><div class="v">${num(r.llm_calls)}</div>
+      <div class="s">${r.llm_degraded?"degraded to rules":"within budget"}</div></div>
+  </div>`;
+
+  h += `<div class="grid2">`;
+  h += `<div class="panel"><h3>Where the money sits <span class="note">never summed</span></h3>
+        <div class="body"><table><tbody>`;
+  for (const [k,[label,tone,blurb]] of Object.entries(IMPACTS)) {
+    const v = sm.by_impact[k] || {count:0,paise:0};
+    h += `<tr><td style="width:44%">${badge(label,tone)}<div class="soft" style="font-size:11.5px;margin-top:4px">${esc(blurb)}</div></td>
+          <td class="num muted">${v.count}</td>
+          <td class="num" style="font-weight:600">${inr(v.paise,{noPaise:1})}</td></tr>`;
   }
+  h += `</tbody></table></div></div>`;
 
-  const levels = bars.flatMap(b => (b.from == null ? [b.to] : [b.from, b.to]));
-  let lo = Math.min(...levels), hi = Math.max(...levels);
-  const span = hi - lo || Math.abs(hi) || 1;
-  lo -= span * 0.18; hi += span * 0.12;
-  const y = (v) => PADT + (H - PADT - PADB) * (1 - (v - lo) / (hi - lo));
-
-  const color = {
-    start: "#35d0ba", total: "#35d0ba", fee: "#e8b046", reversal: "#e5646d",
-    adjustment: "#9b8cf0", transfer: "#9b8cf0", residual: "#e5646d",
-  };
-
-  let out = `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" role="img" aria-label="Payout un-netting waterfall">`;
-
-  // Gridlines with real rupee values, so the compressed axis stays readable.
-  for (let i = 0; i <= 4; i++) {
-    const v = lo + (hi - lo) * (i / 4);
-    const gy = y(v);
-    out += `<line x1="${PADL - 6}" y1="${gy}" x2="${W - PADR}" y2="${gy}" stroke="#1a2532"/>`;
-    out += `<text x="${PADL - 11}" y="${gy + 3.5}" text-anchor="end" fill="#5d7186" font-size="9.5" font-family="ui-monospace,monospace">${esc(inr(v, { noPaise: true }))}</text>`;
+  const ages = sm.by_ageing || {}; const maxAge = Math.max(...Object.values(ages), 1);
+  h += `<div class="panel"><h3>How long it has been open <span class="note">open cases</span></h3>
+        <div class="body"><table><tbody>`;
+  for (const b of ["today","1-3d","3-7d","7-14d","14d+"]) {
+    const n = ages[b] || 0;
+    h += `<tr><td style="width:22%">${esc(b)}</td><td class="num muted" style="width:14%">${n}</td>
+          <td><div class="bar"><i style="width:${(n/maxAge*100).toFixed(1)}%;background:${
+            b==="14d+"?"var(--red)":b==="7-14d"?"var(--orange)":"var(--blue)"}"></i></div></td></tr>`;
   }
+  h += `</tbody></table></div></div></div>`;
 
-  bars.forEach((b, i) => {
-    const x = PADL + i * (bw + gap);
-    const isTotal = b.from == null;
-    const top = isTotal ? y(b.to) : y(Math.max(b.from, b.to));
-    const bot = isTotal ? y(lo) : y(Math.min(b.from, b.to));
-    const h = Math.max(2.5, bot - top);
-    const c = color[b.kind] || "#8496a9";
+  h += `<div class="panel"><h3>Work on these first
+        <span class="note">by priority, then value</span></h3>
+        <div class="body" style="padding:0"><table><thead><tr>
+          <th>Priority</th><th>Issue</th><th class="num">Amount</th><th>Owner</th><th>Status</th><th>Age</th>
+        </tr></thead><tbody>`;
+  for (const item of c.items.slice(0,6)) {
+    h += `<tr class="click" data-case="${esc(item.case_key)}">
+      <td>${badge(item.priority, PRIO_TONE[item.priority]||"gray")}</td>
+      <td><div style="font-weight:500">${esc(item.action)}</div>
+          <div class="soft"><span class="mono">${esc(item.subject_id)}</span> · ${esc(item.code)}</div></td>
+      <td class="num" style="font-weight:600">${esc(item.amount_display)}</td>
+      <td class="muted">${esc(item.owner)}</td>
+      <td>${statusBadge(item.status)}</td>
+      <td class="muted">${item.age_days < 1 ? "today" : item.age_days.toFixed(0)+"d"}</td></tr>`;
+  }
+  h += `</tbody></table></div></div>`;
 
-    out += `<rect x="${x}" y="${top}" width="${bw}" height="${h}" rx="2.5" fill="${c}" opacity="${isTotal ? .95 : .85}"/>`;
-    if (i < bars.length - 1) {
-      const ny = y(b.to);
-      out += `<line x1="${x + (isTotal ? bw : 0)}" y1="${ny}" x2="${x + bw + gap}" y2="${ny}" stroke="#2b3a4b" stroke-dasharray="2 3"/>`;
-    }
-    out += `<text x="${x + bw / 2}" y="${top - 7}" text-anchor="middle" fill="#e6edf3" font-size="10.5" font-family="ui-monospace,monospace">${esc(inr(b.delta_paise, { noPaise: true }))}</text>`;
-    out += `<text x="${x + bw / 2}" y="${H - PADB + 20}" text-anchor="end" fill="#8496a9" font-size="10.5" transform="rotate(-34 ${x + bw / 2} ${H - PADB + 20})">${esc(b.label)}</text>`;
-  });
-
-  out += `<text x="${W - PADR}" y="${H - 6}" text-anchor="end" fill="#5d7186" font-size="9.5">axis starts at ${esc(inr(lo, { noPaise: true }))}, not zero — otherwise the deductions are invisible</text>`;
-  out += `</svg>`;
-  return out;
+  h += `<div class="panel"><h3>Latest run <span class="note">${esc(latest.run_id||"")}</span></h3>
+    <div class="body"><dl class="kv">
+      <dt>Match rate</dt><dd>${pct(latest.match_rate||0)}</dd>
+      <dt>Breaks raised</dt><dd>${num(latest.exceptions_open)} ${
+        latest.exceptions_delta!=null?`<span class="soft">(${latest.exceptions_delta>=0?"+":""}${latest.exceptions_delta} vs previous)</span>`:""}</dd>
+      <dt>Open cases</dt><dd>${num(latest.open_cases)} <span class="soft">(${
+        num(latest.resolved_cases)} settled, so not raised again)</span></dd>
+      <dt>In exceptions</dt><dd>${inr(latest.value_in_exceptions_paise||0)}</dd>
+      <dt>Duration</dt><dd>${num(latest.duration_ms)} ms</dd>
+    </dl></div></div>`;
+  return h;
 }
 
-// ---------- views ----------
+// ---------- Cases ----------
 async function viewCases() {
   const q = S.cache.caseQ || {};
   const params = new URLSearchParams();
-  if (q.owner) params.set("owner", q.owner);
-  if (q.impact) params.set("impact", q.impact);
-  if (q.status) params.set("status", q.status);
-  const d = await api("/api/cases?" + params);
+  for (const k of ["owner","impact","status"]) if (q[k]) params.set(k,q[k]);
+  const d = await api("/api/cases?"+params);
   const sm = d.summary;
+  const needle = (q.text||"").toLowerCase();
+  const items = needle
+    ? d.items.filter(i => (i.code+i.subject_id+i.owner+i.action).toLowerCase().includes(needle))
+    : d.items;
 
-  const IMPACTS = {
-    claimable:        ["Claimable",       "acc",  "A counterparty owes this back — a claim can be filed today."],
-    at_risk:          ["At risk",         "warn", "Real money whose whereabouts are unresolved."],
-    contestable_loss: ["Lost unless contested", "bad", "Gone unless someone disputes it in time."],
-    bookkeeping:      ["Bookkeeping",     "",     "No money moves; the books are wrong and need correcting."],
-  };
-
-  let h = `<div class="head"><h2>Outstanding work</h2>
-    <p>Every break the run could not close, routed to whoever can actually fix it and tracked by an identity that
-       survives across runs — so a case settled once does not come back tomorrow.</p></div>`;
-
-  h += `<div class="callout"><b>Identified, not recovered.</b> Recovery happens when a bank credits the money back,
-        which is not an event this system can observe. These four figures are also never summed: a chargeback already
-        lost and a fee a supplier owes back are not the same rupee.</div>`;
-
-  h += `<div class="tiles">`;
-  for (const [key, [label, cls, blurb]] of Object.entries(IMPACTS)) {
-    const v = sm.by_impact[key] || { count: 0, paise: 0 };
-    h += `<div class="tile ${cls}"><div class="k">${label}</div>
-          <div class="v">${inr(v.paise, { noPaise: true })}</div>
-          <div class="s">${v.count} case${v.count === 1 ? "" : "s"} · ${esc(blurb)}</div></div>`;
-  }
-  h += `<div class="tile good"><div class="k">Closed</div><div class="v">${num(sm.resolved_cases)}</div>
-        <div class="s">settled and not re-raised</div></div></div>`;
+  let h = `<div class="head"><div>
+    <h2>Cases</h2>
+    <p>Every break the run could not close, routed to whoever can fix it and tracked by an
+       identity that survives across runs.</p></div></div>`;
 
   h += `<div class="filters">
+    <input id="cText" placeholder="Search id, code, owner…" value="${esc(q.text||"")}" style="width:250px">
     <label>Owner</label><select id="cOwner"><option value="">all</option>`;
-  for (const [owner, v] of Object.entries(sm.by_owner).sort((a, b) => b[1].paise - a[1].paise)) {
-    h += `<option value="${esc(owner)}" ${q.owner === owner ? "selected" : ""}>${esc(owner)} (${v.count})</option>`;
-  }
+  for (const [o,v] of Object.entries(sm.by_owner).sort((a,b)=>b[1].paise-a[1].paise))
+    h += `<option value="${esc(o)}" ${q.owner===o?"selected":""}>${esc(o)} (${v.count})</option>`;
+  h += `</select><label>Status</label><select id="cStatus"><option value="">open</option>`;
+  for (const [k,label] of STATUSES)
+    h += `<option value="${k}" ${q.status===k?"selected":""}>${esc(label)}</option>`;
   h += `</select><label>Impact</label><select id="cImpact"><option value="">all</option>`;
-  for (const key of Object.keys(IMPACTS)) {
-    h += `<option value="${key}" ${q.impact === key ? "selected" : ""}>${IMPACTS[key][0]}</option>`;
-  }
-  h += `</select><label>Status</label><select id="cStatus">
-      <option value="" ${!q.status ? "selected" : ""}>open</option>
-      <option value="resolved" ${q.status === "resolved" ? "selected" : ""}>resolved</option>
-    </select><span class="dim">${num(d.items.length)} shown</span></div>`;
+  for (const k of Object.keys(IMPACTS))
+    h += `<option value="${k}" ${q.impact===k?"selected":""}>${IMPACTS[k][0]}</option>`;
+  h += `</select><span class="soft">${num(items.length)} shown · ${num(sm.open_cases)} open</span></div>`;
 
-  h += `<div class="panel"><div class="body scroll" style="padding:0"><table><thead><tr>
-    <th>Owner</th><th>Code</th><th class="num">Amount</th><th>The ask</th><th>Age</th><th></th>
-    </tr></thead><tbody>`;
-  for (const c of d.items) {
-    const hyp = c.hypothesis
-      ? `<div style="margin-top:7px;padding:8px 10px;background:var(--panel-2);border-radius:6px;border-left:2px solid var(--violet)">
-           <div class="dim" style="font-size:11px">UNVERIFIED HYPOTHESIS — ${esc(c.hypothesis.produced_by)}</div>
-           <div style="margin:3px 0 4px">${esc(c.hypothesis.reasoning || "")}</div>
-           <div class="mono" style="font-size:11px">${c.hypothesis.components.map(x =>
-             `${esc(x.ref)} ${inr(x.amount_paise, { noPaise: true })}`).join(" + ")}</div>
-           <div class="dim" style="font-size:11px;margin-top:4px">Sums exactly, but rests on a component in no record.
-             A human confirms it; the system will not.</div>
-         </div>` : "";
-    h += `<tr>
-      <td><span class="pill soft">${esc(c.owner)}</span></td>
-      <td class="mono">${esc(c.code)}<div class="dim" style="font-size:10px">${esc(c.subject_id)}</div></td>
-      <td class="num">${esc(c.amount_display)}</td>
-      <td style="max-width:520px"><div><b>${esc(c.action)}</b></div>
-        <div class="muted" style="margin-top:3px">${esc(c.message)}</div>${hyp}</td>
-      <td class="mono" style="font-size:10.5px">${c.first_seen_run === c.last_seen_run ? "new" : "carried"}</td>
-      <td>${c.status === "resolved"
-        ? `<span class="pill ok">resolved</span>`
-        : `<button class="act" data-case="${esc(c.case_key)}">Settle</button>`}</td>
-    </tr>`;
+  h += `<div class="panel"><div class="scroll"><table><thead><tr>
+    <th>Priority</th><th>Case</th><th class="num">Amount</th><th>Issue</th>
+    <th>Owner</th><th>Status</th><th>Age</th><th></th></tr></thead><tbody>`;
+  for (const i of items) {
+    h += `<tr class="click" data-case="${esc(i.case_key)}">
+      <td>${badge(i.priority, PRIO_TONE[i.priority]||"gray")}</td>
+      <td class="mono">${esc(i.subject_id)}${i.hypothesis?`<div>${badge("hypothesis","purple")}</div>`:""}</td>
+      <td class="num" style="font-weight:600">${esc(i.amount_display)}</td>
+      <td><div style="font-weight:500">${esc(i.action)}</div>
+          <div class="mono soft">${esc(i.code)}</div></td>
+      <td class="muted">${esc(i.owner)}</td>
+      <td>${statusBadge(i.status)}</td>
+      <td class="muted">${i.age_days<1?"today":i.age_days.toFixed(0)+"d"}</td>
+      <td class="soft">›</td></tr>`;
   }
-  if (!d.items.length) h += `<tr><td colspan="6"><div class="empty">Nothing outstanding here.</div></td></tr>`;
+  if (!items.length) h += `<tr><td colspan="8"><div class="empty">Nothing outstanding here.</div></td></tr>`;
   h += `</tbody></table></div></div>`;
   return h;
 }
 
-async function viewOverview() {
-  const s = S.summary, r = s.run;
-  const matchRate = r.orders_count ? r.matched_count / (r.orders_count + r.settlement_lines_count + r.bank_txns_count) : 0;
-  const reconciledPct = r.gross_paise ? r.value_reconciled_paise / r.gross_paise : 0;
-  const records = r.orders_count + r.settlement_lines_count + r.bank_txns_count;
-  const throughput = r.duration_ms ? Math.round(records / (r.duration_ms / 1000)) : 0;
+// ---------- Case detail ----------
+async function viewCase() {
+  const d = await api(`/api/cases/${S.caseKey}`);
+  const c = d.case;
+  const v = verdictOf(d.verdict);
+  const [impactLabel, impactTone] = IMPACTS[c.impact] || ["—","gray"];
 
-  let h = `
-  <div class="head">
-    <h2>Reconciliation ${esc(r.run_id)}</h2>
-    <p>Three sources — the merchant's ledger, Razorpay's settlement recon report and the bank statement —
-       matched into one reconciled position, with everything that could not be closed listed honestly.</p>
-  </div>
-  <div class="tiles">
-    <div class="tile acc"><div class="k">Value reconciled</div><div class="v">${inr(r.value_reconciled_paise, { noPaise: true })}</div><div class="s">${pct(reconciledPct)} of ${inr(r.gross_paise, { noPaise: true })} gross</div></div>
-    <div class="tile good"><div class="k">Links made</div><div class="v">${num(r.matched_count)}</div><div class="s">across ${num(records)} records</div></div>
-    <div class="tile ${r.exceptions_open ? "warn" : "good"}"><div class="k">Exceptions open</div><div class="v">${num(r.exceptions_open)}</div><div class="s">${inr(r.value_in_exceptions_paise, { noPaise: true })} unresolved</div></div>
-    <div class="tile"><div class="k">Wall clock</div><div class="v">${num(r.duration_ms)}<span style="font-size:14px;color:var(--muted)"> ms</span></div><div class="s">${num(throughput)} records/sec</div></div>
-    <div class="tile"><div class="k">Model calls</div><div class="v">${num(r.llm_calls)}</div><div class="s">${r.llm_degraded ? "degraded to rules" : (r.ai_enabled ? "agents enabled" : "rules only")}</div></div>
+  let h = `<div class="head"><div>
+      <h2>${esc(c.action)}</h2>
+      <p class="mono">${esc(c.code)} · ${esc(c.subject_id)}</p>
+    </div><button class="back" id="backCases">← All cases</button></div>`;
+
+  h += `<div class="tiles">
+    <div class="tile red"><div class="k">Discrepancy</div><div class="v">${esc(c.amount_display)}</div>
+      <div class="s">${esc(impactLabel)}</div></div>
+    <div class="tile"><div class="k">Owner</div><div class="v" style="font-size:19px">${esc(c.owner)}</div>
+      <div class="s">${c.status==="awaiting_action"?"waiting on them":"ours to action"}</div></div>
+    <div class="tile"><div class="k">Priority</div><div class="v" style="font-size:19px">${esc(c.priority)}</div>
+      <div class="s">outstanding ${ageText(c.age_days)}</div></div>
+    <div class="tile"><div class="k">Status</div><div class="v" style="font-size:19px">${esc(STATUS_LABEL[c.status]||c.status)}</div>
+      <div class="s">first seen run ${esc((c.first_seen_run||"").slice(0,8))}</div></div>
   </div>`;
 
-  h += `<div class="callout"><b>Where the AI is, and is not.</b> Matching, arithmetic, fee and GST recomputation
-        are entirely deterministic — a model is never asked to decide what equals what. A model is consulted only
-        for column mapping on unseen file formats, and to propose an explanation for a residual that exact search
-        could not close. Every proposal it makes must sum to the residual exactly, in integer paise, or it is
-        rejected and stays in the queue.</div>`;
+  const visited = [c.status].concat(
+    (d.history||[]).flatMap(e => [e.from_status, e.to_status])).filter(Boolean);
+  h += `<div class="panel"><div class="body">${stepper(c.status, visited)}
+      <div class="soft" style="margin-top:14px;font-size:12px">
+        Dated <b>${day(c.occurred_at)}</b> · reconciled as of <b>${day(c.as_of)}</b>
+        · first flagged ${day(c.first_seen_at)}, run ${esc((c.first_seen_run||"").slice(0,8))}
+      </div></div></div>`;
 
-  h += `<div class="grid2">
-    <div class="panel"><h3>How the links were made <span class="note">rule, and how many</span></h3>
-      <div class="body"><table><thead><tr><th>Rule</th><th class="num">Links</th><th style="width:34%"></th></tr></thead><tbody>`;
-  const maxRule = Math.max(...s.matches_by_rule.map(m => m.count), 1);
-  for (const m of s.matches_by_rule) {
-    h += `<tr><td class="mono">${esc(m.rule_id)}</td><td class="num">${num(m.count)}</td>
-          <td><div class="bar"><i style="width:${(m.count / maxRule * 100).toFixed(1)}%"></i></div></td></tr>`;
+  h += `<div class="grid-detail"><div>`;
+
+  h += `<div class="panel"><h3>What is wrong</h3><div class="body">
+        <p style="margin:0 0 12px">${esc(d.summary || c.message)}</p>
+        <div class="callout" style="margin:0"><b>Ask:</b> ${esc(c.message)}</div></div></div>`;
+
+  h += `<div class="panel"><h3>Evidence <span class="note">the records behind it</span></h3>
+        <div class="body" style="padding:0"><table><thead><tr>
+        <th>Record</th><th>Reference</th><th class="num">Amount</th><th>Detail</th></tr></thead><tbody>`;
+  for (const e of d.evidence) {
+    h += `<tr><td style="font-weight:500">${esc(e.kind)}</td>
+      <td class="mono">${esc(e.id)}<div class="soft">${esc((e.at||"").toString().slice(0,10))}</div></td>
+      <td class="num">${esc(e.amount_display)}</td>
+      <td class="muted" style="max-width:340px">${esc(e.detail)}</td></tr>`;
   }
+  if (!d.evidence.length) h += `<tr><td colspan="4"><div class="empty">No linked records.</div></td></tr>`;
   h += `</tbody></table></div></div>`;
 
-  h += `<div class="panel"><h3>The honest exception list <span class="note">what we could not close</span></h3>
-        <div class="body scroll"><table><thead><tr><th>Code</th><th class="num">Open</th><th class="num">Resolved</th><th class="num">Value</th></tr></thead><tbody>`;
-  for (const e of s.exceptions_by_code) {
-    h += `<tr><td class="mono">${esc(e.code)}</td>
-          <td class="num">${e.open ? `<span style="color:var(--warn)">${e.open}</span>` : "—"}</td>
-          <td class="num">${e.resolved ? `<span style="color:var(--good)">${e.resolved}</span>` : "—"}</td>
-          <td class="num">${e.value_paise ? inr(e.value_paise, { noPaise: true }) : "—"}</td></tr>`;
+  if (d.agent_trace.length || c.hypothesis) {
+    h += `<div class="panel"><h3>What Unnet tried
+      <span class="note">${d.agent_trace.length} step${d.agent_trace.length===1?"":"s"}</span></h3><div class="body">`;
+    if (v) h += `<div style="margin-bottom:14px">${badge(v[0], v[1])}
+                 <span class="soft" style="margin-left:8px">${esc(v[2])}</span></div>`;
+    h += `<div class="trace">`;
+    for (const t of d.agent_trace) {
+      const tone = t.verdict === "resolved_verified" ? "ok"
+                 : t.verdict === "hypothesis" ? "warn"
+                 : (t.verdict||"").startsWith("rejected") ? "bad" : "";
+      h += `<div class="node ${tone}">
+        <div style="font-weight:500">Step ${t.step} · ${esc(t.action)}</div>`;
+      if (t.components) h += `<div class="mono soft" style="margin-top:3px">${
+        t.components.map(x=>esc(x)).join("  +  ")}</div>`;
+      if (t.verdict) h += `<div style="margin-top:5px">${badge(t.verdict.replace(/_/g," "),
+        tone==="ok"?"green":tone==="warn"?"purple":"red")}${
+        t.delta_paise ? `<span class="soft" style="margin-left:8px">out by ${inr(t.delta_paise,{signed:1})}</span>`:""}</div>`;
+      // The step's reason is stored truncated; when the full text is already
+      // below as the verdict reason, printing both just says it twice.
+      const dup = t.reason && d.verdict_reason
+        && d.verdict_reason.startsWith(t.reason.replace(/…$/, "").trim());
+      if (t.reason && !dup) h += `<div class="muted" style="margin-top:4px">${esc(t.reason)}</div>`;
+      if (t.model) h += `<div class="mono soft" style="margin-top:5px;font-size:11px">${esc(t.model)}</div>`;
+      h += `</div>`;
+    }
+    h += `</div>`;
+    if (d.verdict_reason)
+      h += `<div class="callout" style="border-left-color:var(--purple);margin:14px 0 0">${esc(d.verdict_reason)}</div>`;
+    h += `</div></div>`;
   }
-  h += `</tbody></table></div></div></div>`;
+
+  h += `</div><div>`;
+
+  h += `<div class="panel"><h3>Next action</h3><div class="body">
+      <dl class="kv" style="margin:0 0 14px">
+        <dt>Owner</dt><dd>${esc(c.owner)}</dd>
+        <dt>Impact</dt><dd>${badge(impactLabel, impactTone)}</dd>
+        <dt>Age</dt><dd>${ageText(c.age_days)}</dd>
+      </dl>
+      <div class="soft" style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Draft message</div>
+      <pre class="json" id="draft" style="white-space:pre-wrap;max-height:none">${esc(c.message)}</pre>
+      <div style="display:flex;gap:8px;margin-top:14px">
+        <button class="btn" id="copyDraft">Copy</button>
+        ${c.status==="resolved"
+          ? badge("Resolved","green")
+          : `<button class="btn primary" id="settle">Mark settled</button>`}
+      </div></div></div>`;
+
+  h += `<div class="panel"><h3>History</h3><div class="body"><div class="trace">`;
+  for (const e of d.history) {
+    h += `<div class="node"><div style="font-weight:500">${esc(e.kind.replace(/_/g," "))}
+      <span class="badge gray" style="margin-left:6px">${esc(e.actor)}</span></div>`;
+    if (e.from_status || e.to_status)
+      h += `<div class="soft" style="margin-top:3px">${esc(STATUS_LABEL[e.from_status]||e.from_status||"—")} → ${esc(STATUS_LABEL[e.to_status]||e.to_status||"—")}</div>`;
+    if (e.note) h += `<div class="muted" style="margin-top:3px">${esc(e.note)}</div>`;
+    h += `<div class="soft mono" style="margin-top:3px">${esc((e.at||"").toString().replace("T"," ").slice(0,16))}</div></div>`;
+  }
+  h += `</div></div></div>`;
+
+  h += `</div></div>`;
   return h;
+}
+
+// ---------- Runs ----------
+async function viewRuns() {
+  const d = await api("/api/runs");
+  let h = `<div class="head"><div><h2>Runs</h2>
+    <p>Change over time — whether the match rate is holding and whether the queue is
+       draining. Breaks are what the engine raised; open cases are what is still
+       outstanding after anything a human settled.</p></div></div>`;
+
+  h += `<div class="panel"><div class="scroll"><table><thead><tr>
+    <th>Run</th><th class="num">Records</th><th class="num">Match rate</th>
+    <th class="num">Breaks raised</th><th class="num">Open cases</th><th class="num">Settled</th>
+    <th class="num">In exceptions</th><th class="num">Duration</th><th>Model</th>
+    </tr></thead><tbody>`;
+  // A real zero is not the same as no comparison: the oldest run has nothing
+  // to compare against, every other run genuinely moved by nothing.
+  const delta = (v,invert) => v==null ? `<span class="soft">—</span>`
+    : v===0 ? `<span class="soft">no change</span>`
+    : `<span style="color:${(invert?v<0:v>0)?"var(--green)":"var(--red)"}">${v>0?"+":""}${num(v)}</span>`;
+  for (const r of d.items) {
+    h += `<tr>
+      <td class="mono">${esc(r.run_id.slice(0,10))}<div class="soft">${esc((r.started_at||"").toString().replace("T"," ").slice(0,16))}</div></td>
+      <td class="num">${num(r.records)}</td>
+      <td class="num" style="font-weight:600">${pct(r.match_rate)}</td>
+      <td class="num">${num(r.exceptions_open)}<div>${delta(r.exceptions_delta,true)}</div></td>
+      <td class="num">${num(r.open_cases)}</td>
+      <td class="num">${num(r.resolved_cases)}</td>
+      <td class="num">${inr(r.value_in_exceptions_paise,{noPaise:1})}</td>
+      <td class="num">${num(r.duration_ms)} ms</td>
+      <td>${r.llm_degraded?badge("degraded","red"):r.llm_calls?badge(r.llm_calls+" calls","purple"):badge("rules only","gray")}</td>
+    </tr>`;
+  }
+  h += `</tbody></table></div></div>`;
+  h += `<div class="callout">The same break produces the same case identity every run, so a
+        case settled by a human is not raised again — which is why breaks can hold at ${
+        num(d.items[0]?.exceptions_open ?? 0)} while open cases fall. Ageing runs from the date the
+        money moved to the date the run reconciles to, not from when Unnet first looked.</div>`;
+  return h;
+}
+
+// ---------- Un-netting (waterfall) ----------
+function waterfallSVG(steps) {
+  const W=940,H=330,PADL=78,PADR=14,PADB=74,PADT=26,n=steps.length;
+  const plotW=W-PADL-PADR, bw=Math.max(22,Math.min(66,plotW/n-16));
+  const gap = n>1 ? (plotW-bw*n)/(n-1) : 0;
+  let run=0; const bars=[];
+  for (const s of steps) {
+    if (s.kind==="start"||s.kind==="total") { bars.push({...s,from:null,to:s.delta_paise}); run=s.delta_paise; }
+    else { bars.push({...s,from:run,to:run+s.delta_paise}); run+=s.delta_paise; }
+  }
+  const levels=bars.flatMap(b=>b.from==null?[b.to]:[b.from,b.to]);
+  let lo=Math.min(...levels),hi=Math.max(...levels);
+  const span=hi-lo||Math.abs(hi)||1; lo-=span*.18; hi+=span*.12;
+  const y=v=>PADT+(H-PADT-PADB)*(1-(v-lo)/(hi-lo));
+  const color={start:"#476cff",total:"#476cff",fee:"#fa7319",reversal:"#fb3748",
+               adjustment:"#784def",transfer:"#784def",residual:"#fb3748"};
+  let out=`<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" role="img" aria-label="Payout un-netting waterfall">`;
+  for (let i=0;i<=4;i++){const v=lo+(hi-lo)*(i/4),gy=y(v);
+    out+=`<line x1="${PADL-6}" y1="${gy}" x2="${W-PADR}" y2="${gy}" stroke="#ebebeb"/>`;
+    out+=`<text x="${PADL-11}" y="${gy+3.5}" text-anchor="end" fill="#a3a3a3" font-size="10" font-family="ui-monospace,monospace">${esc(inr(v,{noPaise:1}))}</text>`;}
+  bars.forEach((b,i)=>{
+    const x=PADL+i*(bw+gap), isTotal=b.from==null;
+    const top=isTotal?y(b.to):y(Math.max(b.from,b.to));
+    const bot=isTotal?y(lo):y(Math.min(b.from,b.to));
+    const hgt=Math.max(2.5,bot-top), c=color[b.kind]||"#7b7b7b";
+    out+=`<rect x="${x}" y="${top}" width="${bw}" height="${hgt}" rx="3" fill="${c}" opacity="${isTotal?.95:.85}"/>`;
+    if(i<bars.length-1){const ny=y(b.to);
+      out+=`<line x1="${x+(isTotal?bw:0)}" y1="${ny}" x2="${x+bw+gap}" y2="${ny}" stroke="#d1d1d1" stroke-dasharray="2 3"/>`;}
+    out+=`<text x="${x+bw/2}" y="${top-7}" text-anchor="middle" fill="#171717" font-size="10.5" font-family="ui-monospace,monospace">${esc(inr(b.delta_paise,{noPaise:1}))}</text>`;
+    out+=`<text x="${x+bw/2}" y="${H-PADB+20}" text-anchor="end" fill="#5c5c5c" font-size="10.5" transform="rotate(-34 ${x+bw/2} ${H-PADB+20})">${esc(b.label)}</text>`;});
+  out+=`<text x="${W-PADR}" y="${H-6}" text-anchor="end" fill="#a3a3a3" font-size="9.5">axis starts at ${esc(inr(lo,{noPaise:1}))}, not zero — otherwise the deductions are invisible</text></svg>`;
+  return out;
 }
 
 async function viewUnnetting() {
   if (!S.waterfall) S.waterfall = await api("/api/waterfall");
   const batches = S.waterfall.batches;
   if (!batches.length) return `<div class="empty">No payouts in this run.</div>`;
-  const b = batches[Math.min(S.batch, batches.length - 1)];
-
-  let h = `<div class="head">
-    <h2>Un-netting a payout</h2>
-    <p>One bank credit covers hundreds of orders, net of MDR, 18% GST on that MDR, refunds, chargebacks and
-       adjustments. This is that single figure taken apart and put back together — derived two independent ways
-       and required to agree.</p></div>`;
-
+  const b = batches[Math.min(S.batch, batches.length-1)];
+  let h = `<div class="head"><div><h2>Un-netting a payout</h2>
+    <p>One bank credit covers hundreds of orders, net of MDR, 18% GST on that MDR, refunds and
+       chargebacks. Derived two independent ways and required to agree.</p></div></div>`;
   h += `<div class="filters"><label>Payout</label><select id="batchSel">`;
-  batches.forEach((x, i) => {
-    h += `<option value="${i}" ${i === S.batch ? "selected" : ""}>${esc(x.settlement_id)} · ${esc((x.settled_at || "").slice(0, 10))} · ${inr(x.computed_net_paise, { noPaise: true })}</option>`;
-  });
-  h += `</select><span class="dim">${batches.length} payouts in this run</span></div>`;
-
-  const consistent = b.internally_consistent;
+  batches.forEach((x,i)=>{h+=`<option value="${i}" ${i===S.batch?"selected":""}>${esc(x.settlement_id)} · ${esc((x.settled_at||"").slice(0,10))} · ${inr(x.computed_net_paise,{noPaise:1})}</option>`;});
+  h += `</select><span class="soft">${batches.length} payouts</span></div>`;
   const residual = b.bank_residual_paise;
-
   h += `<div class="tiles">
-    <div class="tile"><div class="k">Gross sales</div><div class="v">${inr(b.gross_paise, { noPaise: true })}</div><div class="s">${num(b.payment_count)} payments</div></div>
-    <div class="tile warn"><div class="k">MDR + GST</div><div class="v">${inr(b.mdr_paise + b.gst_paise, { noPaise: true })}</div><div class="s">${inr(b.mdr_paise, { noPaise: true })} fee · ${inr(b.gst_paise, { noPaise: true })} GST</div></div>
-    <div class="tile bad"><div class="k">Reversals</div><div class="v">${inr(b.refunds_paise + b.disputes_paise, { noPaise: true })}</div><div class="s">${num(b.refund_count)} refunds · ${num(b.dispute_count)} chargebacks</div></div>
-    <div class="tile acc"><div class="k">Net payout</div><div class="v">${inr(b.computed_net_paise, { noPaise: true })}</div><div class="s">${b.bank_credit_paise != null ? "bank credited " + inr(b.bank_credit_paise, { noPaise: true }) : "not yet credited"}</div></div>
-    <div class="tile ${residual ? "bad" : "good"}"><div class="k">Unexplained</div><div class="v">${residual == null ? "—" : inr(residual)}</div><div class="s">${residual ? "raised as an exception" : "reconciled to the paisa"}</div></div>
-  </div>`;
-
-  h += `<div class="panel"><h3>Gross to bank credit
-        <span class="note">${consistent ? "credit/debit and amount/fee agree" : "⚠ the report disagrees with itself"}</span></h3>
-        <div class="body">${waterfallSVG(b.waterfall)}</div></div>`;
-
-  h += `<div class="panel"><h3>Proof <span class="note">two independent derivations of the same number</span></h3>
-    <div class="body"><table><tbody>
-      <tr><td>From <span class="mono">credit − debit</span> columns</td><td class="num">${inr(b.computed_net_paise)}</td></tr>
-      <tr><td>From <span class="mono">amount − fee</span>, by entity type</td><td class="num">${inr(b.dual_net_paise)}</td></tr>
-      <tr><td>Reported by Razorpay for this settlement</td><td class="num">${inr(b.reported_net_paise)}</td></tr>
-      <tr><td>Credited by the bank</td><td class="num">${b.bank_credit_paise == null ? "not yet" : inr(b.bank_credit_paise)}</td></tr>
-      <tr><td><b>Residual</b></td><td class="num"><b style="color:${residual ? "var(--bad)" : "var(--good)"}">${residual == null ? "—" : inr(residual)}</b></td></tr>
-    </tbody></table>
-    <p class="dim" style="margin:12px 0 0;font-size:12px">UTR <span class="mono">${esc(b.settlement_utr || "—")}</span> ·
-       ${num(b.line_count)} settlement lines</p></div></div>`;
+    <div class="tile"><div class="k">Gross</div><div class="v">${inr(b.gross_paise,{noPaise:1})}</div><div class="s">${num(b.payment_count)} payments</div></div>
+    <div class="tile orange"><div class="k">MDR + GST</div><div class="v">${inr(b.mdr_paise+b.gst_paise,{noPaise:1})}</div><div class="s">${inr(b.mdr_paise,{noPaise:1})} fee · ${inr(b.gst_paise,{noPaise:1})} GST</div></div>
+    <div class="tile red"><div class="k">Reversals</div><div class="v">${inr(b.refunds_paise+b.disputes_paise,{noPaise:1})}</div><div class="s">${num(b.refund_count)} refunds · ${num(b.dispute_count)} chargebacks</div></div>
+    <div class="tile blue"><div class="k">Net payout</div><div class="v">${inr(b.computed_net_paise,{noPaise:1})}</div><div class="s">${b.bank_credit_paise!=null?"bank credited "+inr(b.bank_credit_paise,{noPaise:1}):"not yet credited"}</div></div>
+    <div class="tile ${residual?"red":"green"}"><div class="k">Unexplained</div><div class="v">${residual==null?"—":inr(residual)}</div><div class="s">${residual?"raised as a case":"reconciled to the paisa"}</div></div></div>`;
+  h += `<div class="panel"><h3>Gross to bank credit <span class="note">${b.internally_consistent?"credit/debit and amount/fee agree":"⚠ the report disagrees with itself"}</span></h3><div class="body">${waterfallSVG(b.waterfall)}</div></div>`;
+  h += `<div class="panel"><h3>Proof <span class="note">two independent derivations</span></h3><div class="body"><table><tbody>
+    <tr><td>From <span class="mono">credit − debit</span></td><td class="num">${inr(b.computed_net_paise)}</td></tr>
+    <tr><td>From <span class="mono">amount − fee</span>, by type</td><td class="num">${inr(b.dual_net_paise)}</td></tr>
+    <tr><td>Reported by Razorpay</td><td class="num">${inr(b.reported_net_paise)}</td></tr>
+    <tr><td>Credited by the bank</td><td class="num">${b.bank_credit_paise==null?"not yet":inr(b.bank_credit_paise)}</td></tr>
+    <tr><td><b>Residual</b></td><td class="num"><b style="color:${residual?"var(--red)":"var(--green)"}">${residual==null?"—":inr(residual)}</b></td></tr>
+    </tbody></table><p class="soft" style="margin:12px 0 0;font-size:12px">UTR <span class="mono">${esc(b.settlement_utr||"—")}</span> · ${num(b.line_count)} settlement lines</p></div></div>`;
   return h;
 }
 
+// ---------- Matches ----------
 async function viewMatches() {
   const q = S.cache.matchQ || {};
-  const params = new URLSearchParams({ limit: "150" });
-  for (const k of ["tier", "rule_id", "decided_by", "q"]) if (q[k]) params.set(k, q[k]);
-  const d = await api("/api/matches?" + params);
-
-  let h = `<div class="head"><h2>Matches</h2>
-    <p>Every link the engine was willing to stand behind, with the rule that made it, its confidence, and the
-       evidence behind it. Nothing here was decided by similarity alone — the fuzzy rules require a unique
-       candidate and refuse when more than one fits.</p></div>`;
-
-  h += `<div class="filters">
-    <label>Tier</label>
-    <select id="fTier">
-      <option value="">all</option>
-      <option value="tier1_bank_to_batch" ${q.tier === "tier1_bank_to_batch" ? "selected" : ""}>1 · bank → payout</option>
-      <option value="tier2_line_to_order" ${q.tier === "tier2_line_to_order" ? "selected" : ""}>2 · line → order</option>
-      <option value="tier3_reversal_to_payment" ${q.tier === "tier3_reversal_to_payment" ? "selected" : ""}>3 · reversal → payment</option>
-    </select>
-    <label>Decided by</label>
-    <select id="fDecider">
-      <option value="">all</option>
-      <option value="rule" ${q.decided_by === "rule" ? "selected" : ""}>rule</option>
-      <option value="model" ${q.decided_by === "model" ? "selected" : ""}>model</option>
-      <option value="human" ${q.decided_by === "human" ? "selected" : ""}>human</option>
-    </select>
-    <input id="fQ" placeholder="search an id…" value="${esc(q.q || "")}" style="width:230px">
-    <span class="dim">${num(d.total)} links</span>
-  </div>`;
-
-  h += `<div class="panel"><div class="body scroll" style="padding:0"><table><thead><tr>
+  const params = new URLSearchParams({limit:"150"});
+  for (const k of ["tier","decided_by","q"]) if (q[k]) params.set(k,q[k]);
+  const d = await api("/api/matches?"+params);
+  let h = `<div class="head"><div><h2>Matches</h2>
+    <p>Every link the engine stands behind, with the rule that made it and its evidence. Fuzzy
+       rules require a unique candidate and refuse when more than one fits.</p></div></div>`;
+  h += `<div class="filters"><label>Tier</label><select id="fTier"><option value="">all</option>
+    <option value="tier1_bank_to_batch" ${q.tier==="tier1_bank_to_batch"?"selected":""}>1 · bank → payout</option>
+    <option value="tier2_line_to_order" ${q.tier==="tier2_line_to_order"?"selected":""}>2 · line → order</option>
+    <option value="tier3_reversal_to_payment" ${q.tier==="tier3_reversal_to_payment"?"selected":""}>3 · reversal → payment</option>
+    </select><label>By</label><select id="fDecider"><option value="">all</option>
+    <option value="rule" ${q.decided_by==="rule"?"selected":""}>rule</option>
+    <option value="model" ${q.decided_by==="model"?"selected":""}>model</option>
+    </select><input id="fQ" placeholder="search an id…" value="${esc(q.q||"")}" style="width:220px">
+    <span class="soft">${num(d.total)} links</span></div>`;
+  h += `<div class="panel"><div class="scroll"><table><thead><tr>
     <th>Rule</th><th>By</th><th class="num">Conf</th><th>Left</th><th>Right</th><th class="num">Amount</th><th>Evidence</th>
     </tr></thead><tbody>`;
   for (const m of d.items) {
-    h += `<tr>
-      <td class="mono">${esc(m.rule_id)}</td>
-      <td>${decidedPill(m.decided_by)}</td>
-      <td class="num">${(m.confidence / 10).toFixed(0)}%</td>
-      <td class="mono">${esc(m.left_id)}<div class="dim" style="font-size:10px">${esc(m.left_kind)}</div></td>
-      <td class="mono">${esc(m.right_id)}<div class="dim" style="font-size:10px">${esc(m.right_kind)}</div></td>
-      <td class="num">${inr(m.amount_paise, { noPaise: true })}</td>
-      <td style="max-width:340px"><details class="ev"><summary>${esc(m.evidence.reason || "show")}</summary>
-        <pre class="json">${esc(JSON.stringify(m.evidence, null, 2))}</pre></details></td>
-    </tr>`;
+    h += `<tr><td class="mono">${esc(m.rule_id)}</td>
+      <td>${badge(m.decided_by, m.decided_by==="model"?"purple":m.decided_by==="human"?"orange":"blue")}</td>
+      <td class="num">${(m.confidence/10).toFixed(0)}%</td>
+      <td class="mono">${esc(m.left_id)}<div class="soft">${esc(m.left_kind)}</div></td>
+      <td class="mono">${esc(m.right_id)}<div class="soft">${esc(m.right_kind)}</div></td>
+      <td class="num">${inr(m.amount_paise,{noPaise:1})}</td>
+      <td style="max-width:300px"><details class="ev"><summary>${esc(m.evidence.reason||"show")}</summary>
+        <pre class="json">${esc(JSON.stringify(m.evidence,null,2))}</pre></details></td></tr>`;
   }
   if (!d.items.length) h += `<tr><td colspan="7"><div class="empty">No matches for these filters.</div></td></tr>`;
   h += `</tbody></table></div></div>`;
   return h;
 }
 
-async function viewExceptions() {
-  const q = S.cache.excQ || {};
-  const params = new URLSearchParams({ limit: "300" });
-  if (q.code) params.set("code", q.code);
-  if (q.status) params.set("status", q.status);
-  const d = await api("/api/exceptions?" + params);
-
-  let h = `<div class="head"><h2>Exception queue</h2>
-    <p>What the run could not close, grouped by why. A model's proposed explanation appears here with the
-       verifier's verdict beside it — including the ones the verifier threw out, because an analyst picking this up
-       should see what was tried and why it did not hold.</p></div>`;
-
-  h += `<div class="filters"><label>Code</label><select id="eCode"><option value="">all</option>`;
-  for (const e of S.summary.exceptions_by_code) {
-    h += `<option value="${esc(e.code)}" ${q.code === e.code ? "selected" : ""}>${esc(e.code)} (${e.open + e.resolved})</option>`;
-  }
-  h += `</select><label>Status</label><select id="eStatus">
-      <option value="">all</option>
-      <option value="open" ${q.status === "open" ? "selected" : ""}>open</option>
-      <option value="ai_rejected" ${q.status === "ai_rejected" ? "selected" : ""}>verifier rejected</option>
-      <option value="ai_resolved" ${q.status === "ai_resolved" ? "selected" : ""}>model resolved</option>
-      <option value="auto_resolved" ${q.status === "auto_resolved" ? "selected" : ""}>auto resolved</option>
-      <option value="rolled_forward" ${q.status === "rolled_forward" ? "selected" : ""}>rolled forward</option>
-    </select><span class="dim">${num(d.total)} · ${inr(d.total_value_paise, { noPaise: true })}</span></div>`;
-
-  h += `<div class="panel"><div class="body scroll" style="padding:0"><table><thead><tr>
-    <th>Code</th><th>Status</th><th>Subject</th><th class="num">Impact</th><th>What happened</th><th></th>
-    </tr></thead><tbody>`;
-  for (const e of d.items) {
-    const p = e.proposal;
-    let detail = `<div>${esc(e.summary)}</div>`;
-    if (p) {
-      const ok = e.verifier_verdict === "accepted";
-      detail += `<div style="margin-top:7px;padding:8px 10px;background:var(--panel-2);border-radius:6px;border-left:2px solid ${ok ? "var(--good)" : "var(--bad)"}">
-        <div style="font-size:11px" class="dim">PROPOSED BY ${esc(p.produced_by)}</div>
-        <div style="margin:3px 0 5px">${esc(p.reasoning || "")}</div>
-        <div class="mono" style="font-size:11px">${p.components.map(c => `${esc(c.ref)} ${inr(c.amount_paise, { noPaise: true })}`).join(" + ")} = ${inr(p.target_paise, { noPaise: true })}</div>
-        <div style="margin-top:5px"><span class="pill ${ok ? "ok" : "open"}">verifier: ${esc(e.verifier_verdict)}</span>
-          <span class="dim" style="font-size:11px"> ${esc(e.verifier_reason || "")}</span></div>
-      </div>`;
-    } else if (e.verifier_reason) {
-      detail += `<div class="dim" style="font-size:11.5px;margin-top:5px">${esc(e.verifier_verdict)}: ${esc(e.verifier_reason)}</div>`;
-    }
-    detail += `<details class="ev"><summary>evidence</summary><pre class="json">${esc(JSON.stringify(e.evidence, null, 2))}</pre></details>`;
-
-    h += `<tr>
-      <td class="mono">${esc(e.code)}</td>
-      <td>${statusPill(e.status)}</td>
-      <td class="mono">${esc(e.subject_id)}<div class="dim" style="font-size:10px">${esc(e.subject_kind)}</div></td>
-      <td class="num">${e.residual_paise ? inr(e.residual_paise, { noPaise: true }) : "—"}</td>
-      <td style="max-width:520px">${detail}</td>
-      <td style="white-space:nowrap">
-        <button class="act" data-acc="${e.id}">Accept</button>
-        <button class="act" data-rej="${e.id}">Reject</button></td>
-    </tr>`;
-  }
-  if (!d.items.length) h += `<tr><td colspan="6"><div class="empty">Nothing here — all closed.</div></td></tr>`;
-  h += `</tbody></table></div></div>`;
-  return h;
-}
-
-async function viewAsk() {
-  let h = `<div class="head"><h2>Ask</h2>
-    <p>Common finance questions are answered by parameterised queries with no model involved. Anything else is
-       turned into a single read-only SELECT by a model, if one is configured — and the SQL is shown alongside the
-       answer, because a number you cannot check is not an answer.</p></div>`;
-
-  h += `<div class="panel"><div class="body">
-    <div style="display:flex;gap:8px">
-      <input id="qBox" placeholder="Why was my payout short?" style="flex:1" value="${esc(S.cache.lastQ || "")}">
-      <button class="act primary" id="qGo">Ask</button>
-    </div>
-    <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">`;
-  for (const s of ["Why was my payout short?", "What is still open?", "How much is on risk hold?",
-                   "Tell me about chargebacks", "What did fees cost me?", "How much did we reconcile overall?"]) {
-    h += `<button class="act" data-sug="${esc(s)}" style="font-size:11.5px">${esc(s)}</button>`;
-  }
-  h += `</div></div></div><div id="qOut"></div>`;
-  return h;
-}
-
-function renderAnswer(a) {
-  let h = `<div class="panel"><h3>Answer <span class="note">${esc(a.source)}</span></h3><div class="body">
-    <div style="font-size:14.5px;margin-bottom:${a.rows.length ? "12px" : "0"}">${esc(a.answer)}</div>`;
-  if (a.sql) h += `<pre class="json">${esc(a.sql)}</pre>`;
-  if (a.rows.length) {
-    const cols = Object.keys(a.rows[0]);
-    h += `<div class="scroll"><table><thead><tr>${cols.map(c => `<th>${esc(c)}</th>`).join("")}</tr></thead><tbody>`;
-    for (const r of a.rows.slice(0, 100)) {
-      h += `<tr>${cols.map(c => `<td class="mono">${esc(r[c])}</td>`).join("")}</tr>`;
-    }
-    h += `</tbody></table></div>`;
-  }
-  h += `</div></div>`;
-  return h;
-}
-
+// ---------- Audit ----------
 async function viewAudit() {
   const q = S.cache.auditQ || {};
-  const params = new URLSearchParams({ limit: "400" });
-  if (q.stage) params.set("stage", q.stage);
-  if (q.decided_by) params.set("decided_by", q.decided_by);
-  const d = await api("/api/audit?" + params);
-
-  let h = `<div class="head"><h2>Audit trail</h2>
-    <p>Append-only. Every decision the run made, in the order it made them, with who decided and what the verifier
-       said. Model decisions carry a prompt hash so the exact input that produced them can be recovered.</p></div>`;
-
+  const params = new URLSearchParams({limit:"400"});
+  for (const k of ["stage","decided_by"]) if (q[k]) params.set(k,q[k]);
+  const d = await api("/api/audit?"+params);
+  let h = `<div class="head"><div><h2>Audit trail</h2>
+    <p>Append-only. Every decision, in the order it was made, with who decided and what the
+       verifier said. Model decisions carry a prompt hash so the exact input is recoverable.</p></div></div>`;
   h += `<div class="filters"><label>Stage</label><select id="aStage"><option value="">all</option>`;
-  for (const s of ["ingest", "tier1_bank_to_batch", "tier2_line_to_order", "tier3_reversal_to_payment", "triage", "exception", "human_review"]) {
-    h += `<option value="${s}" ${q.stage === s ? "selected" : ""}>${s}</option>`;
-  }
+  for (const s of ["ingest","tier1_bank_to_batch","tier2_line_to_order","tier3_reversal_to_payment","triage","exception","human_review","case_resolution"])
+    h += `<option value="${s}" ${q.stage===s?"selected":""}>${s}</option>`;
   h += `</select><label>By</label><select id="aBy"><option value="">all</option>
-      <option value="rule" ${q.decided_by === "rule" ? "selected" : ""}>rule</option>
-      <option value="model" ${q.decided_by === "model" ? "selected" : ""}>model</option>
-      <option value="human" ${q.decided_by === "human" ? "selected" : ""}>human</option>
-    </select><span class="dim">${num(d.total)} entries</span></div>`;
-
-  h += `<div class="panel"><div class="body scroll" style="padding:0"><table><thead><tr>
+    <option value="rule" ${q.decided_by==="rule"?"selected":""}>rule</option>
+    <option value="model" ${q.decided_by==="model"?"selected":""}>model</option>
+    <option value="human" ${q.decided_by==="human"?"selected":""}>human</option>
+    </select><span class="soft">${num(d.total)} entries</span></div>`;
+  h += `<div class="panel"><div class="scroll"><table><thead><tr>
     <th class="num">#</th><th>Stage</th><th>Subject</th><th>Decision</th><th>By</th><th>Decider</th><th>Verifier</th>
     </tr></thead><tbody>`;
   for (const a of d.items) {
-    h += `<tr><td class="num">${a.seq}</td><td class="mono">${esc(a.stage)}</td>
+    h += `<tr><td class="num soft">${a.seq}</td><td class="mono">${esc(a.stage)}</td>
       <td class="mono">${esc(a.subject_id)}</td><td>${esc(a.decision)}</td>
-      <td>${decidedPill(a.decided_by)}</td><td class="mono" style="max-width:210px;overflow:hidden;text-overflow:ellipsis">${esc(a.decider_ref)}</td>
-      <td class="mono">${esc(a.verifier_result || "—")}</td></tr>`;
+      <td>${badge(a.decided_by, a.decided_by==="model"?"purple":a.decided_by==="human"?"orange":"blue")}</td>
+      <td class="mono soft" style="max-width:200px;overflow:hidden;text-overflow:ellipsis">${esc(a.decider_ref)}</td>
+      <td class="mono">${esc(a.verifier_result||"—")}</td></tr>`;
   }
   h += `</tbody></table></div></div>`;
   return h;
 }
 
+// ---------- Ask ----------
+async function viewAsk() {
+  let h = `<div class="head"><div><h2>Ask</h2>
+    <p>Common questions are answered by parameterised queries with no model. Anything else becomes
+       a single read-only SELECT, shown next to the answer.</p></div></div>`;
+  h += `<div class="panel"><div class="body">
+    <div style="display:flex;gap:8px"><input id="qBox" placeholder="Why was my payout short?" style="flex:1"
+      value="${esc(S.cache.lastQ||"")}"><button class="btn primary" id="qGo">Ask</button></div>
+    <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">`;
+  for (const s of ["Why was my payout short?","What is still open?","How much is on risk hold?",
+                   "Tell me about chargebacks","What did fees cost me?"])
+    h += `<button class="btn" data-sug="${esc(s)}" style="font-size:12px">${esc(s)}</button>`;
+  h += `</div></div></div><div id="qOut"></div>`;
+  return h;
+}
+function renderAnswer(a) {
+  let h = `<div class="panel"><h3>Answer <span class="note">${esc(a.source)}</span></h3><div class="body">
+    <div style="font-size:15px;margin-bottom:${a.rows.length?"14px":"0"}">${esc(a.answer)}</div>`;
+  if (a.sql) h += `<pre class="json">${esc(a.sql)}</pre>`;
+  if (a.rows.length) {
+    const cols = Object.keys(a.rows[0]);
+    h += `<div class="scroll"><table><thead><tr>${cols.map(c=>`<th>${esc(c)}</th>`).join("")}</tr></thead><tbody>`;
+    for (const r of a.rows.slice(0,100)) h += `<tr>${cols.map(c=>`<td class="mono">${esc(r[c])}</td>`).join("")}</tr>`;
+    h += `</tbody></table></div>`;
+  }
+  return h + `</div></div>`;
+}
+
 // ---------- wiring ----------
-const RENDER = {
-  cases: viewCases, overview: viewOverview, unnetting: viewUnnetting, matches: viewMatches,
-  exceptions: viewExceptions, ask: viewAsk, audit: viewAudit,
-};
+const RENDER = {overview:viewOverview, cases:viewCases, case:viewCase, runs:viewRuns,
+                unnetting:viewUnnetting, matches:viewMatches, audit:viewAudit, ask:viewAsk};
 
 function bind() {
-  const on = (id, ev, fn) => { const n = document.getElementById(id); if (n) n.addEventListener(ev, fn); };
+  const on=(id,ev,fn)=>{const n=document.getElementById(id); if(n) n.addEventListener(ev,fn);};
 
-  on("batchSel", "change", e => { S.batch = +e.target.value; render(); });
+  document.querySelectorAll("[data-case]").forEach(el =>
+    el.addEventListener("click", () => { S.caseKey = el.getAttribute("data-case"); S.view="case"; render(); }));
+  on("backCases","click",()=>{S.view="cases";S.caseKey=null;render();});
 
-  const cq = () => { S.cache.caseQ = {
-    owner: document.getElementById("cOwner").value,
-    impact: document.getElementById("cImpact").value,
-    status: document.getElementById("cStatus").value,
-  }; render(); };
-  on("cOwner", "change", cq); on("cImpact", "change", cq); on("cStatus", "change", cq);
+  const cq=()=>{S.cache.caseQ={
+    owner:document.getElementById("cOwner").value,
+    impact:document.getElementById("cImpact").value,
+    status:document.getElementById("cStatus").value,
+    text:document.getElementById("cText").value.trim()};render();};
+  ["cOwner","cImpact","cStatus"].forEach(i=>on(i,"change",cq));
+  on("cText","keydown",e=>{if(e.key==="Enter")cq();});
 
-  document.querySelectorAll("[data-case]").forEach(b => {
-    b.addEventListener("click", async () => {
-      await api(`/api/cases/${b.getAttribute("data-case")}/resolve`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ note: "settled from the dashboard" }),
-      });
-      render();
-    });
+  on("batchSel","change",e=>{S.batch=+e.target.value;render();});
+
+  const mq=()=>{S.cache.matchQ={tier:document.getElementById("fTier").value,
+    decided_by:document.getElementById("fDecider").value,
+    q:document.getElementById("fQ").value.trim()};render();};
+  ["fTier","fDecider"].forEach(i=>on(i,"change",mq));
+  on("fQ","keydown",e=>{if(e.key==="Enter")mq();});
+
+  const aq=()=>{S.cache.auditQ={stage:document.getElementById("aStage").value,
+    decided_by:document.getElementById("aBy").value};render();};
+  ["aStage","aBy"].forEach(i=>on(i,"change",aq));
+
+  on("copyDraft","click",async()=>{
+    await navigator.clipboard?.writeText(document.getElementById("draft").innerText);
+    const b=document.getElementById("copyDraft"); b.textContent="Copied"; setTimeout(()=>b.textContent="Copy",1400);
+  });
+  on("settle","click",async()=>{
+    const b=document.getElementById("settle"); b.disabled=true; b.textContent="Settling…";
+    const r=await fetch(`/api/cases/${S.caseKey}/resolve`,{method:"POST",
+      headers:{"Content-Type":"application/json"},body:JSON.stringify({note:"Settled from the dashboard"})});
+    if(!r.ok){b.disabled=false;b.textContent="Settle refused";
+      b.insertAdjacentHTML("afterend",`<span class="soft" style="margin-left:8px">${r.status===401?"a bearer token is required":"read-only deployment"}</span>`);return;}
+    render();
   });
 
-  const mq = () => { S.cache.matchQ = {
-    tier: document.getElementById("fTier").value,
-    decided_by: document.getElementById("fDecider").value,
-    q: document.getElementById("fQ").value.trim(),
-  }; render(); };
-  on("fTier", "change", mq); on("fDecider", "change", mq);
-  on("fQ", "keydown", e => { if (e.key === "Enter") mq(); });
-
-  const eq = () => { S.cache.excQ = {
-    code: document.getElementById("eCode").value,
-    status: document.getElementById("eStatus").value,
-  }; render(); };
-  on("eCode", "change", eq); on("eStatus", "change", eq);
-
-  const aq = () => { S.cache.auditQ = {
-    stage: document.getElementById("aStage").value,
-    decided_by: document.getElementById("aBy").value,
-  }; render(); };
-  on("aStage", "change", aq); on("aBy", "change", aq);
-
-  document.querySelectorAll("[data-acc],[data-rej]").forEach(b => {
-    b.addEventListener("click", async () => {
-      const accept = b.hasAttribute("data-acc");
-      const id = b.getAttribute(accept ? "data-acc" : "data-rej");
-      await api(`/api/exceptions/${id}/decision`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accept, note: "reviewed in dashboard" }),
-      });
-      S.summary = await api("/api/summary");
-      render();
-    });
-  });
-
-  const ask = async (text) => {
-    S.cache.lastQ = text;
-    const box = document.getElementById("qBox"); if (box) box.value = text;
-    document.getElementById("qOut").innerHTML = `<div class="empty">Thinking…</div>`;
-    const a = await api("/api/ask", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question: text }),
-    });
-    document.getElementById("qOut").innerHTML = renderAnswer(a);
+  const ask=async text=>{
+    S.cache.lastQ=text; const box=document.getElementById("qBox"); if(box)box.value=text;
+    document.getElementById("qOut").innerHTML=`<div class="empty">Thinking…</div>`;
+    const a=await api("/api/ask",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({question:text})});
+    document.getElementById("qOut").innerHTML=renderAnswer(a);
   };
-  on("qGo", "click", () => ask(document.getElementById("qBox").value));
-  on("qBox", "keydown", e => { if (e.key === "Enter") ask(e.target.value); });
-  document.querySelectorAll("[data-sug]").forEach(b =>
-    b.addEventListener("click", () => ask(b.getAttribute("data-sug"))));
+  on("qGo","click",()=>ask(document.getElementById("qBox").value));
+  on("qBox","keydown",e=>{if(e.key==="Enter")ask(e.target.value);});
+  document.querySelectorAll("[data-sug]").forEach(b=>b.addEventListener("click",()=>ask(b.getAttribute("data-sug"))));
 }
 
 async function render() {
-  document.getElementById("nav").innerHTML = VIEWS.map(([k, ic, label]) =>
-    `<button data-v="${k}" class="${S.view === k ? "on" : ""}"><span class="ic">${ic}</span>${label}</button>`).join("");
-  document.querySelectorAll("[data-v]").forEach(b =>
-    b.addEventListener("click", () => { S.view = b.getAttribute("data-v"); render(); }));
+  const openCount = S.cache.openCases;
+  document.getElementById("nav").innerHTML = VIEWS.map(([k,ic,label])=>
+    `<button data-v="${k}" class="${S.view===k||(k==="cases"&&S.view==="case")?"on":""}">
+       <span class="ic">${ic}</span>${label}${k==="cases"&&openCount!=null?`<span class="count">${openCount}</span>`:""}</button>`).join("");
+  document.querySelectorAll("[data-v]").forEach(b=>
+    b.addEventListener("click",()=>{S.view=b.getAttribute("data-v");S.caseKey=null;render();}));
 
-  const main = document.getElementById("main");
-  try {
-    main.innerHTML = await RENDER[S.view]();
-    bind();
-  } catch (err) {
-    main.innerHTML = `<div class="empty">${esc(err.message || err)}</div>`;
-  }
+  const main=document.getElementById("main");
+  try { main.innerHTML = await RENDER[S.view](); bind(); }
+  catch(err){ main.innerHTML = `<div class="empty">${esc(err.message||err)}</div>`; }
 }
 
-(async function boot() {
-  try {
-    S.summary = await api("/api/summary");
-  } catch {
-    document.getElementById("main").innerHTML =
-      `<div class="empty">No run found. Run <span class="mono">make recon</span> first, then reload.</div>`;
-    return;
-  }
-  const r = S.summary.run;
+(async function boot(){
+  try { S.summary = await api("/api/summary"); }
+  catch { document.getElementById("main").innerHTML =
+      `<div class="empty">No run yet. Run <span class="mono">make recon</span>, then reload.</div>`; return; }
+  try { S.cache.openCases = (await api("/api/cases")).summary.open_cases; } catch {}
+  const r=S.summary.run;
   document.getElementById("foot").innerHTML =
-    `run ${esc(r.run_id)}<br>${num(r.orders_count)} orders<br>${num(r.settlement_lines_count)} lines<br>${num(r.bank_txns_count)} bank rows`;
+    `run ${esc(r.run_id.slice(0,10))}<br>${num(r.orders_count)} orders<br>${num(r.settlement_lines_count)} lines<br>${num(r.bank_txns_count)} bank rows`;
   render();
 })();
 </script>

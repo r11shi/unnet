@@ -12,6 +12,7 @@ from __future__ import annotations
 from collections import defaultdict
 
 from unnet.core.models import EntityType, ExceptionCode, MatchTier
+from unnet.core.money import format_inr
 from unnet.engine.context import ReconContext
 
 REVERSAL_TYPES = {EntityType.REFUND, EntityType.DISPUTE}
@@ -113,7 +114,7 @@ def _flag_split_refunds(ctx: ReconContext) -> None:
             residual_paise=0,
             summary=(
                 f"One refund reported as {len(refunds)} settlement lines totalling "
-                f"{total} paise."
+                f"{format_inr(total)}."
             ),
             evidence={
                 "payment_id": payment_id,
@@ -142,8 +143,8 @@ def _flag_chargebacks(ctx: ReconContext) -> None:
             subject_id=line.entity_id,
             residual_paise=line.amount_paise + line.fee_paise,
             summary=(
-                f"Chargeback of {line.amount_paise} paise plus {line.fee_paise} paise "
-                "in dispute fees deducted from this payout."
+                f"Chargeback of {format_inr(line.amount_paise)} plus "
+                f"{format_inr(line.fee_paise)} in dispute fees deducted from this payout."
             ),
             evidence={
                 "dispute_id": line.dispute_id,

@@ -62,21 +62,56 @@ def _resolve(session: Session, run_id: str | None) -> str:
 
 
 @app.get("/api/runs")
-def list_runs():
+def list_runs(limit: int = Query(30, le=100)):
+    """Runs newest first, each with a delta against the one before it.
+
+    Change over time is the thing a single run cannot show: whether the match
+    rate is holding, whether the exception queue is draining or growing, and
+    how many cases were carried forward rather than raised fresh. The deltas
+    are computed here so the client never has to align two rows itself.
+    """
     with _session() as session:
-        runs = session.exec(select(Run).order_by(Run.id.desc()).limit(50)).all()
-        return [
-            {
-                "run_id": r.run_id,
-                "label": r.label,
-                "ai_enabled": r.ai_enabled,
-                "started_at": r.started_at,
-                "duration_ms": r.duration_ms,
-                "matched_count": r.matched_count,
-                "exceptions_open": r.exceptions_open,
-            }
-            for r in runs
-        ]
+        runs = session.exec(select(Run).order_by(Run.id.desc()).limit(limit + 1)).all()
+
+        rows = []
+        for index, run in enumerate(runs[:limit]):
+            previous = runs[index + 1] if index + 1 < len(runs) else None
+            notes = run.notes or {}
+            cases = notes.get("cases", {})
+            records = (
+                run.orders_count + run.settlement_lines_count + run.bank_txns_count
+            )
+            matched = run.matched_count
+            match_rate = matched / records if records else 0.0
+
+            def delta(field: str, current):
+                if previous is None:
+                    return None
+                return current - getattr(previous, field)
+
+            rows.append(
+                {
+                    "run_id": run.run_id,
+                    "label": run.label,
+                    "ai_enabled": run.ai_enabled,
+                    "started_at": run.started_at,
+                    "duration_ms": run.duration_ms,
+                    "duration_delta": delta("duration_ms", run.duration_ms),
+                    "records": records,
+                    "matched_count": matched,
+                    "matched_delta": delta("matched_count", matched),
+                    "match_rate": match_rate,
+                    "exceptions_open": run.exceptions_open,
+                    "exceptions_delta": delta("exceptions_open", run.exceptions_open),
+                    "value_reconciled_paise": run.value_reconciled_paise,
+                    "value_in_exceptions_paise": run.value_in_exceptions_paise,
+                    "open_cases": cases.get("open_cases", 0),
+                    "resolved_cases": cases.get("resolved_cases", 0),
+                    "llm_calls": run.llm_calls,
+                    "llm_degraded": run.llm_degraded,
+                }
+            )
+        return {"items": rows}
 
 
 @app.get("/api/summary")
@@ -454,7 +489,11 @@ def cases(owner: str | None = None, impact: str | None = None, status: str | Non
         # ?status=resolved rather than cluttering the queue.
         return case.status != "resolved"
 
-    shown = sorted((c for c in rows if keep(c)), key=lambda c: -c.amount_paise)
+    rank = {"P1": 0, "P2": 1, "P3": 2}
+    shown = sorted(
+        (c for c in rows if keep(c)),
+        key=lambda c: (rank.get(c.priority, 9), -c.amount_paise),
+    )
 
     return {
         "summary": summary,
@@ -465,6 +504,9 @@ def cases(owner: str | None = None, impact: str | None = None, status: str | Non
                 "owner": c.owner,
                 "impact": c.impact,
                 "status": c.status,
+                "priority": c.priority,
+                "age_days": round(c.age_days, 1),
+                "ageing_bucket": c.ageing_bucket,
                 "subject_kind": c.subject_kind,
                 "subject_id": c.subject_id,
                 "amount_paise": c.amount_paise,
@@ -511,6 +553,160 @@ def resolve_case(
         )
         session.commit()
     return {"ok": True, "case_key": case_key, "status": "resolved"}
+
+
+@app.get("/api/cases/{case_key}")
+def case_detail(case_key: str):
+    """Everything needed to work one case, in one call.
+
+    The primary workflow screen answers three questions — why is this open,
+    what has Unnet already done, and what do I do next — and each needs a
+    different slice of the run. Assembling them server-side keeps the client
+    from making six requests and then having to join them.
+    """
+    with _session() as session:
+        cases = casefile.load_previous(session)
+        case = cases.get(case_key)
+        if case is None:
+            raise HTTPException(404, f"No case {case_key}")
+
+        events = casefile.load_events(session, case_key)
+
+        # The exception this case came from carries the agent trace and the
+        # verifier's verdict — the part that shows what was actually tried.
+        exception = session.exec(
+            select(ReconException)
+            .where(ReconException.subject_id == case.subject_id)
+            .where(ReconException.code == case.code)
+            .order_by(ReconException.id.desc())
+        ).first()
+
+        evidence_rows = _evidence_rows(session, case)
+
+        return {
+            "case": {
+                "case_key": case.case_key,
+                "code": case.code,
+                "owner": case.owner,
+                "impact": case.impact,
+                "status": case.status,
+                "priority": case.priority,
+                "subject_kind": case.subject_kind,
+                "subject_id": case.subject_id,
+                "amount_paise": case.amount_paise,
+                "amount_display": case.amount_display,
+                "action": case.action,
+                "message": case.message,
+                "hypothesis": case.hypothesis,
+                "age_days": round(case.age_days, 1),
+                "ageing_bucket": case.ageing_bucket,
+                "first_seen_at": case.first_seen_at,
+                "last_seen_at": case.last_seen_at,
+                "occurred_at": case.occurred_at,
+                "as_of": case.as_of,
+                "first_seen_run": case.first_seen_run,
+                "last_seen_run": case.last_seen_run,
+            },
+            "summary": exception.summary if exception else "",
+            "verdict": (exception.verifier_verdict if exception else None),
+            "verdict_reason": (exception.verifier_reason if exception else None),
+            "agent_trace": ((exception.evidence or {}).get("agent_trace") if exception else []) or [],
+            "evidence": evidence_rows,
+            "history": [
+                {
+                    "kind": e.kind,
+                    "actor": e.actor.value,
+                    "note": e.note,
+                    "from_status": e.from_status,
+                    "to_status": e.to_status,
+                    "at": e.at,
+                    "detail": e.detail,
+                }
+                for e in events
+            ],
+        }
+
+
+def _evidence_rows(session: Session, case) -> list[dict]:
+    """The actual records behind a case, as a table an analyst can read.
+
+    Which records matter depends on what the case is about, so this dispatches
+    on the subject rather than dumping every table.
+    """
+    rows: list[dict] = []
+
+    def add(kind: str, ident: str, when, amount: int | None, detail: str):
+        rows.append(
+            {
+                "kind": kind,
+                "id": ident,
+                "at": when,
+                "amount_display": format_inr(amount) if amount is not None else "",
+                "detail": detail,
+            }
+        )
+
+    if case.subject_kind == "settlement_batch":
+        batch = session.exec(
+            select(SettlementBatch).where(SettlementBatch.settlement_id == case.subject_id)
+        ).first()
+        if batch:
+            add("Payout", batch.settlement_id, batch.settled_at,
+                batch.reported_amount_paise, f"UTR {batch.settlement_utr or '—'}")
+            credit = session.exec(
+                select(Match)
+                .where(Match.right_id == batch.settlement_id)
+                .where(Match.left_kind == "bank_txn")
+                .order_by(Match.id.desc())
+            ).first()
+            if credit:
+                txn = session.exec(
+                    select(BankTxn).where(BankTxn.bank_ref == credit.left_id)
+                ).first()
+                if txn:
+                    add("Bank credit", txn.bank_ref, txn.value_date,
+                        txn.credit_paise, txn.narration)
+
+    elif case.subject_kind == "bank_txn":
+        txn = session.exec(
+            select(BankTxn).where(BankTxn.bank_ref == case.subject_id)
+        ).first()
+        if txn:
+            add("Bank credit", txn.bank_ref, txn.value_date, txn.credit_paise, txn.narration)
+
+    elif case.subject_kind == "settlement_line":
+        line = session.exec(
+            select(SettlementLine).where(SettlementLine.entity_id == case.subject_id)
+            .order_by(SettlementLine.id.desc())
+        ).first()
+        if line:
+            add(f"Settlement {line.type.value}", line.entity_id, line.created_at,
+                line.amount_paise,
+                f"fee {format_inr(line.fee_paise)} · GST {format_inr(line.tax_paise)} · "
+                f"{line.method or '—'}")
+            if line.settlement_id:
+                add("In payout", line.settlement_id, line.settled_at, None,
+                    f"UTR {line.settlement_utr or '—'}")
+
+    elif case.subject_kind == "merchant_order":
+        order = session.exec(
+            select(MerchantOrder).where(MerchantOrder.order_id == case.subject_id)
+            .order_by(MerchantOrder.id.desc())
+        ).first()
+        if order:
+            add("Order", order.order_id, order.captured_at, order.gross_paise,
+                f"{order.method or '—'} · invoice {order.invoice_no or '—'}")
+            if order.payment_id:
+                line = session.exec(
+                    select(SettlementLine)
+                    .where(SettlementLine.payment_id == order.payment_id)
+                    .order_by(SettlementLine.id.desc())
+                ).first()
+                if line:
+                    add("Gateway line", line.entity_id, line.created_at, line.amount_paise,
+                        "on risk hold" if line.on_hold else f"in {line.settlement_id or '—'}")
+
+    return rows
 
 
 @app.get("/api/health")

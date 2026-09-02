@@ -11,6 +11,7 @@ minutes, and a wrong match costs a restated ledger.
 from __future__ import annotations
 
 from unnet.core.models import ExceptionCode, ExceptionStatus, MatchTier
+from unnet.core.money import format_inr
 from unnet.engine.context import ReconContext, days_between
 
 #: How far apart a payout and its bank credit may sit and still be the same event.
@@ -193,9 +194,9 @@ def _check_residuals(ctx: ReconContext) -> None:
         else:
             code = ExceptionCode.SHORT_CREDIT if delta < 0 else ExceptionCode.OVER_CREDIT
             summary = (
-                f"Bank credited {abs(delta)} paise "
+                f"Bank credited {format_inr(abs(delta))} "
                 f"{'less' if delta < 0 else 'more'} than the payout of "
-                f"{batch.reported_amount_paise} paise."
+                f"{format_inr(batch.reported_amount_paise)}."
             )
 
         ctx.record_exception(
@@ -212,6 +213,11 @@ def _check_residuals(ctx: ReconContext) -> None:
                 "delta_paise": delta,
                 "matched_by": match.rule_id,
                 "value_date": txn.value_date.isoformat() if txn.value_date else None,
+                # The UTR is the reference the bank will ask for first. Leaving
+                # it out produced a draft message that said "UTR —" while the
+                # evidence panel right above it showed the number.
+                "settlement_utr": batch.settlement_utr,
+                "settlement_id": batch.settlement_id,
             },
         )
 
