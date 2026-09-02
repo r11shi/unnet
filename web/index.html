@@ -9,6 +9,8 @@
      and works with no network at all — which matters here, because the demo is
      meant to run offline and a finance tool should not block first paint on a
      third-party font server. -->
+<!-- Inline so there is no favicon request to 404 on a machine with no network. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23171717'/%3E%3Cpath d='M9 10v7a7 7 0 0 0 14 0v-7' stroke='%23fff' stroke-width='3' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" media="print" onload="this.media='all'"
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap">
@@ -35,7 +37,20 @@
   --teal:#22d3bb;   --teal-a10:#22d3bb1a;
   --slate-a10:#99a0ae1a; --slate-a16:#99a0ae29;
 
-  --text-strong:var(--gray-950); --text-sub:var(--gray-600); --text-soft:var(--gray-400);
+  /* Each hue above is a *fill* colour — correct for a dot, a bar or a solid
+     button, and unreadable as text on its own 10% tint: #1fc16b on #e9f9f0
+     measures 2.17:1. These are the same hues dropped in HLS lightness until
+     they clear 4.5:1 both on their tint and on white, so a status badge is
+     legible rather than decorative. Hue and saturation are untouched. */
+  --blue-ink:#2d57ff; --green-ink:#147f47; --red-ink:#d80417;
+  --orange-ink:#b74c04; --purple-ink:#7447ee; --yellow-ink:#936803;
+  --teal-ink:#147f70;
+
+  /* gray-400 measures 2.52:1 on white. It is the right token for a hairline,
+     the wrong one for a column header or a run id, both of which are text a
+     reader has to read. The three text roles sit at 950/700/600 instead, which
+     clear AA at 17.9, 12.6 and 6.7:1. */
+  --text-strong:var(--gray-950); --text-sub:var(--gray-700); --text-soft:var(--gray-600);
   --bg-page:var(--gray-50); --bg-surface:var(--gray-0); --bg-weak:var(--gray-100);
   --stroke-soft:var(--gray-200); --stroke-sub:var(--gray-300);
 
@@ -51,7 +66,7 @@ body{
   font-size:14px; line-height:1.5; -webkit-font-smoothing:antialiased;
   letter-spacing:-0.006em;
 }
-a{color:var(--blue);text-decoration:none}
+a{color:var(--blue-ink);text-decoration:none}
 
 /* ---------- shell ---------- */
 .shell{display:grid;grid-template-columns:236px 1fr;min-height:100vh}
@@ -64,7 +79,7 @@ nav{padding:12px 12px;display:flex;flex-direction:column;gap:2px}
 nav button{all:unset;cursor:pointer;padding:8px 12px;border-radius:var(--r-sm);
   color:var(--text-sub);font-size:14px;font-weight:500;display:flex;gap:10px;align-items:center}
 nav button:hover{background:var(--bg-weak);color:var(--text-strong)}
-nav button.on{background:var(--blue-a10);color:var(--blue)}
+nav button.on{background:var(--blue-a10);color:var(--blue-ink)}
 nav button .ic{width:16px;text-align:center;font-size:13px;opacity:.9}
 nav .count{margin-left:auto;font-size:11px;color:var(--text-soft);font-variant-numeric:tabular-nums}
 .side-foot{margin-top:auto;padding:14px 20px 0;border-top:1px solid var(--stroke-soft);
@@ -72,8 +87,11 @@ nav .count{margin-left:auto;font-size:11px;color:var(--text-soft);font-variant-n
 main{padding:28px 32px 72px;max-width:1560px;overflow-x:hidden}
 
 .head{margin-bottom:22px;display:flex;justify-content:space-between;align-items:flex-start;gap:24px}
-.head h2{margin:0 0 5px;font-size:24px;font-weight:600;letter-spacing:-0.022em}
-.head p{margin:0;color:var(--text-sub);max-width:80ch;font-size:14px}
+.head h2{margin:0 0 5px;font-size:24px;font-weight:600;letter-spacing:-0.022em;
+  text-wrap:balance}
+/* 68ch keeps the intro inside the 60-75 character measure where the eye still
+   finds the next line; 80ch was wrapping these at ~95 characters. */
+.head p{margin:0;color:var(--text-sub);max-width:68ch;font-size:14px;text-wrap:pretty}
 .back{all:unset;cursor:pointer;color:var(--text-sub);font-size:13px;font-weight:500;
   padding:6px 12px;border:1px solid var(--stroke-soft);border-radius:var(--r-sm);background:var(--bg-surface)}
 .back:hover{background:var(--bg-weak)}
@@ -85,9 +103,11 @@ main{padding:28px 32px 72px;max-width:1560px;overflow-x:hidden}
 .tile .k{color:var(--text-soft);font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:.06em}
 .tile .v{font-size:26px;font-weight:600;margin-top:7px;letter-spacing:-0.03em;font-variant-numeric:tabular-nums}
 .tile .s{color:var(--text-sub);font-size:12px;margin-top:5px;line-height:1.45}
-.tile.blue .v{color:var(--blue)} .tile.green .v{color:var(--green)}
-.tile.red .v{color:var(--red)}   .tile.orange .v{color:var(--orange)}
-.tile.purple .v{color:var(--purple)}
+/* Ink, not fill: #1fc16b on white is 2.36:1, which misses even the 3:1 floor
+   large text gets. These are headline figures, not decoration. */
+.tile.blue .v{color:var(--blue-ink)} .tile.green .v{color:var(--green-ink)}
+.tile.red .v{color:var(--red-ink)}   .tile.orange .v{color:var(--orange-ink)}
+.tile.purple .v{color:var(--purple-ink)}
 
 .panel{background:var(--bg-surface);border:1px solid var(--stroke-soft);
   border-radius:var(--r);margin-bottom:18px;box-shadow:var(--shadow);overflow:hidden}
@@ -108,19 +128,28 @@ td{padding:11px 14px;border-bottom:1px solid var(--stroke-soft);vertical-align:t
 tr:last-child td{border-bottom:none}
 tbody tr.click{cursor:pointer}
 tbody tr.click:hover{background:var(--bg-weak)}
+/* A row that opens a case is a control, so it has to be reachable and visibly
+   focused. `all:unset` on the nav buttons had taken their default ring away
+   with it, leaving the whole product keyboard-navigable but invisibly so. */
+tbody tr.click:focus-visible{outline:2px solid var(--blue);outline-offset:-2px}
+nav button:focus-visible{outline:2px solid var(--blue);outline-offset:-2px}
+.back:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
+.head h2:focus{outline:none}
 td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
-.mono{font-family:var(--mono);font-size:12px}
+/* Settlement ids, UTRs and bank references have no spaces in them, so a narrow
+   column has nowhere to break and the text escapes the cell. */
+.mono{font-family:var(--mono);font-size:12px;overflow-wrap:anywhere}
 .scroll{max-height:calc(100vh - 300px);min-height:240px;overflow:auto}
 
 /* Badge — Color x Size, mirroring the library's variant structure. */
 .badge{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:var(--r-pill);
   font-size:11.5px;font-weight:500;white-space:nowrap;line-height:1.45}
 .badge.gray{background:var(--slate-a10);color:var(--text-sub)}
-.badge.blue{background:var(--blue-a10);color:var(--blue)}
-.badge.green{background:var(--green-a10);color:var(--green)}
-.badge.red{background:var(--red-a10);color:var(--red)}
-.badge.orange{background:var(--orange-a10);color:var(--orange)}
-.badge.purple{background:var(--purple-a10);color:var(--purple)}
+.badge.blue{background:var(--blue-a10);color:var(--blue-ink)}
+.badge.green{background:var(--green-a10);color:var(--green-ink)}
+.badge.red{background:var(--red-a10);color:var(--red-ink)}
+.badge.orange{background:var(--orange-a10);color:var(--orange-ink)}
+.badge.purple{background:var(--purple-a10);color:var(--purple-ink)}
 .badge.lg{font-size:13px;padding:5px 12px;font-weight:600}
 .dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex:none}
 
@@ -157,7 +186,7 @@ details.ev summary{cursor:pointer;color:var(--text-soft);font-size:12px;margin-t
 .step .ring{width:20px;height:20px;border-radius:50%;border:2px solid var(--stroke-sub);
   flex:none;display:grid;place-items:center;font-size:10px;color:var(--text-soft);background:var(--bg-surface)}
 .step.done .ring{background:var(--blue);border-color:var(--blue);color:#fff}
-.step.now .ring{border-color:var(--blue);color:var(--blue);box-shadow:0 0 0 3px var(--blue-a10)}
+.step.now .ring{border-color:var(--blue);color:var(--blue-ink);box-shadow:0 0 0 3px var(--blue-a10)}
 .step .lbl{font-size:11.5px;color:var(--text-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .step.done .lbl,.step.now .lbl{color:var(--text-strong);font-weight:500}
 .step .line{flex:1;height:2px;background:var(--stroke-soft);margin:0 4px;min-width:10px}
@@ -279,8 +308,8 @@ async function viewOverview() {
 
   let h = `<div class="head"><div>
     <h2>Overview</h2>
-    <p>Reconciliation health and the work it produced. Everything below comes from the
-       latest run; figures are <b>identified</b>, never recovered.</p></div></div>`;
+    <p>What the latest run found, and what is still outstanding after it. Money here is
+       <b>identified</b>, never recovered.</p></div></div>`;
 
   h += `<div class="tiles">
     <div class="tile green"><div class="k">Reconciled</div>
@@ -325,7 +354,7 @@ async function viewOverview() {
           <th>Priority</th><th>Issue</th><th class="num">Amount</th><th>Owner</th><th>Status</th><th>Age</th>
         </tr></thead><tbody>`;
   for (const item of c.items.slice(0,6)) {
-    h += `<tr class="click" data-case="${esc(item.case_key)}">
+    h += `<tr class="click" tabindex="0" role="link" data-case="${esc(item.case_key)}">
       <td>${badge(item.priority, PRIO_TONE[item.priority]||"gray")}</td>
       <td><div style="font-weight:500">${esc(item.action)}</div>
           <div class="soft"><span class="mono">${esc(item.subject_id)}</span> · ${esc(item.code)}</div></td>
@@ -343,7 +372,6 @@ async function viewOverview() {
         latest.exceptions_delta!=null?`<span class="soft">(${latest.exceptions_delta>=0?"+":""}${latest.exceptions_delta} vs previous)</span>`:""}</dd>
       <dt>Open cases</dt><dd>${num(latest.open_cases)} <span class="soft">(${
         num(latest.resolved_cases)} settled, so not raised again)</span></dd>
-      <dt>In exceptions</dt><dd>${inr(latest.value_in_exceptions_paise||0)}</dd>
       <dt>Duration</dt><dd>${num(latest.duration_ms)} ms</dd>
     </dl></div></div>`;
   return h;
@@ -383,7 +411,7 @@ async function viewCases() {
     <th>Priority</th><th>Case</th><th class="num">Amount</th><th>Issue</th>
     <th>Owner</th><th>Status</th><th>Age</th><th></th></tr></thead><tbody>`;
   for (const i of items) {
-    h += `<tr class="click" data-case="${esc(i.case_key)}">
+    h += `<tr class="click" tabindex="0" role="link" data-case="${esc(i.case_key)}">
       <td>${badge(i.priority, PRIO_TONE[i.priority]||"gray")}</td>
       <td class="mono">${esc(i.subject_id)}${i.hypothesis?`<div>${badge("hypothesis","purple")}</div>`:""}</td>
       <td class="num" style="font-weight:600">${esc(i.amount_display)}</td>
@@ -528,7 +556,7 @@ async function viewRuns() {
   // to compare against, every other run genuinely moved by nothing.
   const delta = (v,invert) => v==null ? `<span class="soft">—</span>`
     : v===0 ? `<span class="soft">no change</span>`
-    : `<span style="color:${(invert?v<0:v>0)?"var(--green)":"var(--red)"}">${v>0?"+":""}${num(v)}</span>`;
+    : `<span style="color:${(invert?v<0:v>0)?"var(--green-ink)":"var(--red-ink)"}">${v>0?"+":""}${num(v)}</span>`;
   for (const r of d.items) {
     h += `<tr>
       <td class="mono">${esc(r.run_id.slice(0,10))}<div class="soft">${esc((r.started_at||"").toString().replace("T"," ").slice(0,16))}</div></td>
@@ -608,7 +636,7 @@ async function viewUnnetting() {
     <tr><td>From <span class="mono">amount − fee</span>, by type</td><td class="num">${inr(b.dual_net_paise)}</td></tr>
     <tr><td>Reported by Razorpay</td><td class="num">${inr(b.reported_net_paise)}</td></tr>
     <tr><td>Credited by the bank</td><td class="num">${b.bank_credit_paise==null?"not yet":inr(b.bank_credit_paise)}</td></tr>
-    <tr><td><b>Residual</b></td><td class="num"><b style="color:${residual?"var(--red)":"var(--green)"}">${residual==null?"—":inr(residual)}</b></td></tr>
+    <tr><td><b>Residual</b></td><td class="num"><b style="color:${residual?"var(--red-ink)":"var(--green-ink)"}">${residual==null?"—":inr(residual)}</b></td></tr>
     </tbody></table><p class="soft" style="margin:12px 0 0;font-size:12px">UTR <span class="mono">${esc(b.settlement_utr||"—")}</span> · ${num(b.line_count)} settlement lines</p></div></div>`;
   return h;
 }
@@ -715,9 +743,16 @@ const RENDER = {overview:viewOverview, cases:viewCases, case:viewCase, runs:view
 function bind() {
   const on=(id,ev,fn)=>{const n=document.getElementById(id); if(n) n.addEventListener(ev,fn);};
 
-  document.querySelectorAll("[data-case]").forEach(el =>
-    el.addEventListener("click", () => { S.caseKey = el.getAttribute("data-case"); S.view="case"; render(); }));
-  on("backCases","click",()=>{S.view="cases";S.caseKey=null;render();});
+  document.querySelectorAll("[data-case]").forEach(el => {
+    const open = () => { S.caseKey = el.getAttribute("data-case"); S.view="case"; render(true); };
+    el.addEventListener("click", open);
+    // Enter and Space are what a keyboard user presses on something that looks
+    // like a link or a button; without this the queue is mouse-only.
+    el.addEventListener("keydown", e => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); }
+    });
+  });
+  on("backCases","click",()=>{S.view="cases";S.caseKey=null;render(true);});
 
   const cq=()=>{S.cache.caseQ={
     owner:document.getElementById("cOwner").value,
@@ -749,7 +784,8 @@ function bind() {
       headers:{"Content-Type":"application/json"},body:JSON.stringify({note:"Settled from the dashboard"})});
     if(!r.ok){b.disabled=false;b.textContent="Settle refused";
       b.insertAdjacentHTML("afterend",`<span class="soft" style="margin-left:8px">${r.status===401?"a bearer token is required":"read-only deployment"}</span>`);return;}
-    render();
+    // The button that had focus no longer exists after the re-render.
+    render(true);
   });
 
   const ask=async text=>{
@@ -764,17 +800,25 @@ function bind() {
   document.querySelectorAll("[data-sug]").forEach(b=>b.addEventListener("click",()=>ask(b.getAttribute("data-sug"))));
 }
 
-async function render() {
+async function render(moveFocus) {
   const openCount = S.cache.openCases;
   document.getElementById("nav").innerHTML = VIEWS.map(([k,ic,label])=>
-    `<button data-v="${k}" class="${S.view===k||(k==="cases"&&S.view==="case")?"on":""}">
-       <span class="ic">${ic}</span>${label}${k==="cases"&&openCount!=null?`<span class="count">${openCount}</span>`:""}</button>`).join("");
+    `<button data-v="${k}" class="${S.view===k||(k==="cases"&&S.view==="case")?"on":""}"${
+       S.view===k||(k==="cases"&&S.view==="case")?' aria-current="page"':""}>
+       <span class="ic" aria-hidden="true">${ic}</span>${label}${
+       k==="cases"&&openCount!=null?`<span class="count">${openCount}</span>`:""}</button>`).join("");
   document.querySelectorAll("[data-v]").forEach(b=>
-    b.addEventListener("click",()=>{S.view=b.getAttribute("data-v");S.caseKey=null;render();}));
+    b.addEventListener("click",()=>{S.view=b.getAttribute("data-v");S.caseKey=null;render(true);}));
 
   const main=document.getElementById("main");
   try { main.innerHTML = await RENDER[S.view](); bind(); }
   catch(err){ main.innerHTML = `<div class="empty">${esc(err.message||err)}</div>`; }
+
+  // Swapping innerHTML leaves a screen reader parked where the old view was.
+  // Moving focus to the new heading is the standard fix and also gives a
+  // keyboard user a sensible place to carry on tabbing from.
+  const heading = main.querySelector(".head h2");
+  if (heading && moveFocus) { heading.tabIndex = -1; heading.focus(); }
 }
 
 (async function boot(){
