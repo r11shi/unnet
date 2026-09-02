@@ -13,8 +13,8 @@
 | Links wrong | 0 |
 | Value reconciled | ₹1,53,97,905.00 (98.59%) |
 | Value left in exceptions | ₹8,09,392.28 |
-| Wall clock | 738 ms |
-| Throughput | 4,301 records/sec |
+| Wall clock | 953 ms |
+| Throughput | 3,331 records/sec |
 
 ## Links, by tier
 
@@ -94,7 +94,7 @@ The same fixtures, the same seed, one flag different. This is the honest test of
 | Exceptions still open | 130 | 128 | -2 |
 | Closed by model | 0 | 0 | +0 |
 | Rejected by verifier | 0 | 0 | +0 |
-| Wall clock (ms) | 736 | 738 | +2 |
+| Wall clock (ms) | 907 | 953 | +46 |
 
 Model calls: 3 (3 served from cassette, 0 live). Degraded: False.
 
@@ -112,8 +112,8 @@ Scored against the held-out truth. The first row is the one that matters: a brea
 | Model abstained | 1 |
 | Routing accuracy | 100% (130/130) |
 | Model calls | 3 |
-| Tokens | 5,035 |
-| Tokens per useful outcome | 1,007 |
+| Tokens | 4,895 |
+| Tokens per useful outcome | 979 |
 
 Model calls per exception: [1, 1, 1] (max 1, 0 retries).
 

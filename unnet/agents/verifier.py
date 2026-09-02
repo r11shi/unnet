@@ -44,6 +44,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Callable, Optional
 
+from unnet.core.money import format_inr
+
 
 class Verdict(str, Enum):
     #: Every component traced to a real row. Auto-closeable.
@@ -156,6 +158,16 @@ _KNOWN_KINDS = _CITED_KINDS | _UNMODELLED_KINDS
 
 #: Signature of a provenance lookup: (kind, ref) -> Provenance or None.
 ProvenanceLookup = Callable[[str, str], Optional[Provenance]]
+
+
+def _plural(count: int, singular: str, plural: str | None = None) -> str:
+    """"1 component" / "2 components".
+
+    These strings are read by a finance controller deciding whether to act on a
+    machine's suggestion. "1 component(s)" is the register of a form, not of a
+    colleague, and it undercuts the sentence it appears in.
+    """
+    return f"{count} {singular if count == 1 else (plural or singular + 's')}"
 
 
 def verify(
@@ -284,8 +296,9 @@ def verify(
         return VerificationResult(
             verdict=Verdict.HYPOTHESIS,
             reason=(
-                f"Sums exactly, but {len(unevidenced)} component(s) are not in any "
-                f"record and cannot be evidenced: {', '.join(unevidenced)}. "
+                f"Sums exactly, but {_plural(len(unevidenced), 'component')} "
+                f"{'is' if len(unevidenced) == 1 else 'are'} not in any record and "
+                f"cannot be evidenced: {', '.join(unevidenced)}. "
                 "Plausible, not proven — a human decides."
             ),
             proposal=proposal,
@@ -296,9 +309,9 @@ def verify(
         return VerificationResult(
             verdict=Verdict.HYPOTHESIS,
             reason=(
-                f"Sums exactly, but {rival_explanations} other combination(s) of real "
-                "records also explain this residual. Arithmetic does not identify "
-                "which one actually happened."
+                f"Sums exactly, but {_plural(rival_explanations, 'other combination')} "
+                f"of real records also {'explains' if rival_explanations == 1 else 'explain'} "
+                "this residual. Arithmetic does not identify which one actually happened."
             ),
             proposal=proposal,
             rival_explanations=rival_explanations,
@@ -307,8 +320,9 @@ def verify(
     return VerificationResult(
         verdict=Verdict.RESOLVED_VERIFIED,
         reason=(
-            f"{len(proposal.components)} component(s), every one traced to a ledger "
-            f"row, summing exactly to {proposal.target_paise} paise."
+            f"{_plural(len(proposal.components), 'component')}, every one traced to "
+            f"a ledger row, summing exactly to "
+            f"{format_inr(proposal.target_paise)}."
         ),
         proposal=proposal,
     )

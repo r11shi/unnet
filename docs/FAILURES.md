@@ -151,6 +151,48 @@ metrics reported perfect handling of exceptions the fixture never contained.
 Batch-level defects are now drawn by count, from disjoint pools. Detailed in
 [DECISIONS.md](DECISIONS.md#10-defects-are-injected-by-count-not-by-probability).
 
+### The API key was on its way into the database and onto the screen
+
+Found by accident: Google returned a 503 mid-run, and the resulting
+`verifier_reason` read
+
+```
+No model available: Server error '503 Service Unavailable' for url
+'https://generativelanguage.googleapis.com/v1beta/.../generateContent?key=AQ.Ab8RN6...'
+```
+
+Gemini takes its API key as a URL query parameter, and httpx puts the URL in
+its error text. That text is assigned to `exception.verifier_reason`, committed
+to SQLite, served by `/api/cases/{key}` and rendered on the case detail page —
+so one transient upstream failure would have put a live credential in all four
+places, and in any database anyone was handed.
+
+Redaction now happens in `LLMClient.complete`, where a provider error is first
+turned into our own text, rather than at each of the four places it later
+travels to. The diagnostic survives: the status code, the endpoint and the
+model stay, only the credential goes. `tests/test_secrets.py` covers the URL
+parameter forms and `Authorization: Bearer`, and asserts an ordinary error is
+left alone.
+
+The wider lesson is that the boundary was drawn in the wrong place. Untrusted
+*input* had been thought about carefully; error text on the way *out* had not
+been thought of as data at all.
+
+### Ageing reset itself every time the tool was pointed at something
+
+Cases were aged from `first_seen_at`, the moment Unnet first read a file. Two
+consequences, both quiet. Point it at an existing backlog and every outstanding
+break becomes zero days old, so the queue looks healthy the morning after a
+deploy precisely because nothing has been fixed. And measuring to the wall clock
+rather than to the data's own horizon means re-reconciling last month's files
+makes last month's breaks a month older.
+
+Cases now carry `occurred_at` — when the money actually moved — and `as_of`,
+the latest date in the source data. Age is the distance between them, and
+`first_seen_at` is untouched, so the record still says both things. On the
+fixtures this moved 130 cases out of a single bucket into five, and escalated
+45 to P1 on age that had been sitting at P2 and P3.
+
 ---
 
 ## The v2 finding: my own verifier was laundering hallucinations

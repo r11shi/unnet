@@ -443,7 +443,14 @@ async function viewCase() {
     <div class="tile red"><div class="k">Discrepancy</div><div class="v">${esc(c.amount_display)}</div>
       <div class="s">${esc(impactLabel)}</div></div>
     <div class="tile"><div class="k">Owner</div><div class="v" style="font-size:19px">${esc(c.owner)}</div>
-      <div class="s">${c.status==="awaiting_action"?"waiting on them":"ours to action"}</div></div>
+      <div class="s">${
+        c.status==="awaiting_action" ? "waiting on them"
+        // An external owner with an open hypothesis is not yet theirs to act
+        // on: "ours to action" beside an owner of "bank" reads as a
+        // contradiction when the real state is that we owe them a confirmed ask.
+        : c.status==="investigating" ? "confirm before asking"
+        : c.status==="resolved" ? "settled"
+        : "ours to action"}</div></div>
     <div class="tile"><div class="k">Priority</div><div class="v" style="font-size:19px">${esc(c.priority)}</div>
       <div class="s">outstanding ${ageText(c.age_days)}</div></div>
     <div class="tile"><div class="k">Status</div><div class="v" style="font-size:19px">${esc(STATUS_LABEL[c.status]||c.status)}</div>

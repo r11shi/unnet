@@ -1,0 +1,21 @@
+{
+  "meta": {
+    "model": "gemini-3.6-flash",
+    "backend": "gemini",
+    "task": "exception_triage",
+    "latency_ms": 5848,
+    "tokens": 1533
+  },
+  "data": {
+    "components": [
+      {
+        "kind": "bank_charge",
+        "ref": "inward_neft_charge",
+        "amount_paise": 1180,
+        "note": "Inward NEFT processing charge of Rs 10 plus 18% GST (total Rs 11.80) deducted by destination bank."
+      }
+    ],
+    "reasoning": "The shortfall of 1180 paise (Rs 11.80) between the payout amount of Rs 6,88,910.62 and the bank credit of Rs 6,88,898.82 matches a standard inward NEFT bank charge of Rs 10.00 plus 18% GST (Rs 1.80).",
+    "confidence": 95
+  }
+}

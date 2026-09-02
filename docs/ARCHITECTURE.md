@@ -290,8 +290,22 @@ case_key = sha256(f"{code}|{subject_kind}|{subject_id}")[:16]
 Derived from what the problem *is*, not from a row id — every run re-parses the
 sources and allocates new ids, so identity has to survive that or the loop never
 closes. Run 1 raises and routes; `unnet resolve <key>` settles one; run 2
-reports it settled and does not raise it again. Cases still open keep their
-original first-seen run, so ageing is real.
+reports it settled and does not raise it again.
+
+**Ageing runs on the business clock.** A case carries `occurred_at` — when the
+money actually moved, read from the subject's own row — and `as_of`, the latest
+date present in the source data, which is the date the run reconciles to. Age
+is the distance between those two. Both are kept separately from
+`first_seen_at`, which still records when Unnet first saw the break, so the row
+says honestly when it happened *and* when we noticed.
+
+Ageing from first sight, as an earlier version did, has two failure modes and
+both are quiet. Point the tool at an existing backlog and every outstanding
+item resets to zero days, so the queue looks healthy the morning after a deploy
+precisely because nothing has been fixed. And measuring to `now` rather than to
+the data's own horizon means re-running last month's files makes last month's
+breaks a month older. Priority escalates on age, so both errors move real work
+up and down the queue.
 
 Routing is a lookup table, not a model call. The owner of a `FEE_MISMATCH` is
 always Razorpay support.

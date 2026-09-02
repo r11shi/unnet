@@ -18,6 +18,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -28,6 +29,32 @@ CASSETTE_DIR = Path(os.environ.get("UNNET_CASSETTES", "data/cassettes"))
 
 class LLMUnavailable(RuntimeError):
     """Raised when no model can serve a request. Callers degrade, not crash."""
+
+
+#: Query parameters that carry a credential. Gemini takes the API key in the
+#: URL, so httpx's own error text — "Server error '503' for url
+#: https://...:generateContent?key=AQ.Ab8RN..." — contains it verbatim.
+_SECRET_PARAMS = ("key", "api_key", "apikey", "access_token", "token")
+_SECRET_RE = re.compile(
+    r"([?&](?:" + "|".join(_SECRET_PARAMS) + r")=)[^&\s'\"]+",
+    re.IGNORECASE,
+)
+
+
+def redact(text: object) -> str:
+    """Strip credentials out of anything on its way to a store or a screen.
+
+    A provider error is not a private object: it is written to
+    ``exception.verifier_reason``, persisted in SQLite, served by the API and
+    rendered on the case detail page. One 503 from Google was enough to put a
+    live API key in all four of those places. Redaction belongs here, at the
+    boundary where the error is first turned into our own text, rather than at
+    each of the places it later travels to.
+    """
+    out = _SECRET_RE.sub(r"\1[redacted]", str(text))
+    # Bearer tokens, for a backend that sends the credential in a header and
+    # echoes the request back.
+    return re.sub(r"(Bearer\s+)[A-Za-z0-9._\-]+", r"\1[redacted]", out)
 
 
 @dataclass
@@ -216,9 +243,9 @@ class LLMClient:
             self.degraded = True
             self.degraded_reason = (
                 f"Circuit breaker tripped after {self._consecutive_failures} consecutive "
-                f"failures; continuing on rules only. Last error: {last_error}"
+                f"failures; continuing on rules only. Last error: {redact(last_error)}"
             )
-        raise LLMUnavailable(str(last_error) or "all backends failed")
+        raise LLMUnavailable(redact(last_error) if last_error else "all backends failed")
 
     def stats(self) -> dict:
         return {
