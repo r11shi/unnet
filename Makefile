@@ -14,6 +14,7 @@ help:
 	@echo "  make cases      outstanding work, by owner and impact"
 	@echo "  make eval       score against ground truth -> docs/metrics.json"
 	@echo "  make ablation   rules-only vs rules+model -> docs/METRICS.md"
+	@echo "  make agent      what the agent measurably did, and the loop forced"
 	@echo "  make test       run the test suite"
 	@echo "  make serve      start API + dashboard on :8000"
 	@echo "  make demo       gen + recon + serve, offline, no API key needed"
@@ -47,6 +48,10 @@ eval: setup
 .PHONY: ablation
 ablation: setup
 	$(BIN)/python -m unnet.cli ablation
+
+.PHONY: agent
+agent: setup
+	UNNET_LLM_PROVIDER=$${UNNET_LLM_PROVIDER:-offline} $(BIN)/python -m unnet.cli agent
 
 .PHONY: test
 test: setup

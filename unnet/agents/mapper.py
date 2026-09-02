@@ -28,24 +28,47 @@ from unnet.ingest.mapping import (
 )
 from unnet.llm.provider import LLMClient, LLMUnavailable
 
-SCHEMA = {
-    "type": "object",
-    "properties": {
-        "columns": {
-            "type": "object",
-            "description": (
-                "Canonical field name -> the exact column header in this file. "
-                "Omit any canonical field the file does not contain."
-            ),
+def schema_for(kind: str) -> dict:
+    """The response schema, with every canonical field named explicitly.
+
+    This used to declare ``columns`` as a bare ``{"type": "object"}`` and let
+    the model fill in whatever keys it liked. Under Gemini's structured-output
+    mode an object with no declared properties has nothing to populate, so the
+    model returned ``{"columns": {}}`` every single time — the mapper discarded
+    the empty proposal, fell back to the heuristic, and the whole capability was
+    quietly inert for as long as it existed. Nothing failed loudly because the
+    fallback is correct; it just never did anything.
+
+    The canonical fields are a closed set per source kind, so they can simply be
+    listed. Naming them also stops the model inventing a field the loader has
+    never heard of.
+    """
+    fields = sorted(REQUIRED_FIELDS.get(kind, set()) | OPTIONAL_FIELDS.get(kind, set()))
+    return {
+        "type": "object",
+        "properties": {
+            "columns": {
+                "type": "object",
+                "description": (
+                    "Canonical field -> the exact column header in this file. "
+                    "Omit any field the file does not contain."
+                ),
+                "properties": {
+                    field: {
+                        "type": "string",
+                        "description": f"Header holding {field.replace('_', ' ')}.",
+                    }
+                    for field in fields
+                },
+            },
+            "date_format": {
+                "type": "string",
+                "description": "Python strptime format for the date columns, e.g. %d/%m/%Y.",
+            },
+            "reasoning": {"type": "string"},
         },
-        "date_format": {
-            "type": "string",
-            "description": "Python strptime format for the date columns, e.g. %d/%m/%Y.",
-        },
-        "reasoning": {"type": "string"},
-    },
-    "required": ["columns"],
-}
+        "required": ["columns"],
+    }
 
 PROMPT = """\
 You are mapping a CSV export onto a fixed reconciliation schema.
@@ -97,7 +120,7 @@ class ModelSchemaMapper:
         )
 
         try:
-            response = self.client.complete("schema_mapping", prompt, SCHEMA)
+            response = self.client.complete("schema_mapping", prompt, schema_for(kind))
         except LLMUnavailable:
             # No key, no cassette, or the breaker has tripped. The heuristic
             # mapping stands and the run continues.

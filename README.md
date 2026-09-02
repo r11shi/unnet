@@ -63,21 +63,36 @@ The second column matters more. When a third of the identifiers disappear,
 rule requires a unique candidate and refuses when two fit. Picking the nearest
 would have given a much prettier match rate and a ledger nobody should trust.
 
-**The agent** — the numbers a finance reviewer should actually ask for:
+**The model layer** — the numbers a finance reviewer should actually ask for.
+Read the first two rows together, because the second is what makes the first
+mean anything:
 
 | Metric | Value |
 | --- | ---: |
-| **Wrong-resolution rate** | **0.00%** |
-| Escalation correctness | 100% (3/3) |
-| Hypotheses raised for a human | 2 |
-| Model abstained | 1 |
-| Routing accuracy | 100% (130/130) |
+| Verified resolutions closed **by the model** | **0** |
+| Verified resolutions closed by rule | 3 |
+| Wrong resolutions, across all 3 automated closures | **0** |
+| Hypotheses quarantined for a human | 2 |
+| Model abstentions | 1 |
+| Verifier rejections | 0 |
+| Correct escalations | 3 / 3 |
+| Owner routing, against the fixed table | 130 / 130 |
 | Tokens per useful outcome | 979 |
+
+**A wrong-resolution rate of zero is trivially true of a model that closed
+nothing, so it is not offered as an AI result.** It is a statement about the
+whole pipeline: three exceptions were auto-closed, all three by the
+deterministic subset-sum resolver, and none of them wrongly. What the model
+contributed is the two quarantined hypotheses and one abstention — useful
+work that a human still has to sign off, which is the honest shape of it.
 
 A missed break waits in a queue. A break closed *wrongly* goes into the books
 and is found months later by an auditor. Those are not worth trading at parity,
-so wrong-resolution rate is the headline and the scorer is itself tested against
-runs constructed to fail.
+so the wrong-resolution count is the number to watch, and the scorer is itself
+tested against runs constructed to fail.
+
+Run `make agent` to see both halves: what the model measurably did here, and
+the retry loop driven end to end by a model scripted to be wrong first.
 
 ## Where the AI is — and where it deliberately is not
 
@@ -96,6 +111,41 @@ deterministic search has failed:
 | Schema mapping | Every bank exports a different layout; an alias table cannot be finished | Proposed mapping is dry-run parsed against real rows; failures fall back to the heuristic |
 | Residual triage | Explaining a shortfall sometimes needs a quantity in **no table** — a ₹10 NEFT charge plus GST | Three-verdict verifier (below) |
 | Ask (NL→SQL) | Open-ended questions over a schema | Single `SELECT`, allow-listed tables, read-only, SQL shown next to the answer |
+
+### Schema mapping: measured, and mostly not needed
+
+Eight bank statement layouts modelled on how Indian exports actually differ —
+ICICI, HDFC, Kotak, SBI and Axis conventions, a terse abbreviated export, a
+bilingual Hindi/English header row, and a legacy dump whose columns are named
+`C1`…`C6`. A layout counts as solved only when every field lands on the *right*
+column, checked against a known-good mapping; filling every slot with the wrong
+header produces a ledger, and the ledger is wrong.
+
+| | Layouts |
+| --- | ---: |
+| Solved by the alias table alone | **6 of 8** |
+| Needed the model | 2 |
+| Recovered correctly by the model | **2** |
+| Still unsolved | 0 |
+
+**Six of eight need no model at all**, which is the honest headline and the
+reason the model is a fallback rather than the ingest path. The two it is
+consulted for are the interesting ones — and the column-coded dump is the case
+worth looking at, because its headers carry no information whatsoever. No alias
+table of any length resolves `C1`; the mapping has to be inferred from the
+values. That is a different kind of task, not a longer list, and it is the one
+thing here a model does that a rule cannot.
+
+Building this benchmark found two bugs. Unnet was rejecting any statement with
+a single date column — Axis and others ship exactly that, and the loader had
+always coped, but validation demanded `value_date` by name. And the model
+mapper had never worked at all: its response schema declared a free-form
+object, so Gemini had nothing to populate and returned `{}` on every call. The
+heuristic fallback is correct, so nothing ever failed loudly; the capability was
+simply inert for as long as it existed. Both are fixed, and
+`tests/test_schema_bench.py` asserts the alias table keeps carrying the common
+layouts — otherwise the model would start "winning" this table by the rules
+getting worse.
 
 ### The verifier is the whole design
 

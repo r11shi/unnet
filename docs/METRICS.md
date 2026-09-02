@@ -13,8 +13,8 @@
 | Links wrong | 0 |
 | Value reconciled | ₹1,53,97,905.00 (98.59%) |
 | Value left in exceptions | ₹8,09,392.28 |
-| Wall clock | 953 ms |
-| Throughput | 3,331 records/sec |
+| Wall clock | 1,015 ms |
+| Throughput | 3,127 records/sec |
 
 ## Links, by tier
 
@@ -94,32 +94,58 @@ The same fixtures, the same seed, one flag different. This is the honest test of
 | Exceptions still open | 130 | 128 | -2 |
 | Closed by model | 0 | 0 | +0 |
 | Rejected by verifier | 0 | 0 | +0 |
-| Wall clock (ms) | 907 | 953 | +46 |
+| Wall clock (ms) | 888 | 1,015 | +127 |
 
 Model calls: 3 (3 served from cassette, 0 live). Degraded: False.
 
 ## Agent behaviour
 
-Scored against the held-out truth. The first row is the one that matters: a break left in a queue costs an analyst five minutes, a break closed *wrongly* goes into the books.
+Scored against the held-out truth. Read the first two rows together: a wrong-resolution rate says nothing on its own about a model that closed nothing, so who closed what comes first.
 
 | Metric | Value |
 | --- | ---: |
-| **Wrong-resolution rate** | **0.00%** |
-| Exceptions auto-closed | 3 |
-| Escalation correctness | 100% (3/3) |
-| Hypotheses raised for a human | 2 |
+| Verified resolutions closed **by the model** | **0** |
+| Verified resolutions closed by rule | 3 |
+| Wrong resolutions, across all 3 automated closures | **0** (0.00%) |
+| Hypotheses quarantined for a human | 2 |
 | Proposals the verifier rejected | 0 |
-| Model abstained | 1 |
-| Routing accuracy | 100% (130/130) |
+| Model abstentions | 1 |
+| Correct escalations | 3/3 (100%) |
+| Owner routing, against the fixed table | 130/130 (100%) |
 | Model calls | 3 |
 | Tokens | 4,895 |
 | Tokens per useful outcome | 979 |
+
+**The model closed nothing on this data.** All 3 automated closures were made by the deterministic subset-sum resolver, gated by the same verifier. A wrong-resolution rate of 0.00% is therefore a statement about the pipeline, not a claim about the model — what the model contributed here is 2 quarantined hypotheses and 1 abstention.
 
 Model calls per exception: [1, 1, 1] (max 1, 0 retries).
 
 > **On this dataset the agent never needed a second attempt.** The retry path exists, is bounded to two attempts, feeds the verifier's exact signed delta back into the next prompt, and is covered by tests that force it — but deterministic candidate generation runs first, so by the time a model is consulted there is usually only one sensible answer. Reporting one-step behaviour as multi-step reasoning would be the easiest lie in this project to tell.
 
 No exception was closed against the truth. Every break whose explanation is not in the records — a bank's own NEFT charge, for instance — was escalated or raised as an explicitly unverified hypothesis rather than auto-closed.
+
+## Schema mapping — where the alias table stops
+
+Every bank names its columns differently, and an alias table can only recognise vocabulary somebody already wrote down. This is the one place in Unnet where the deterministic answer is structurally incomplete rather than merely fiddly, so it is the fairest available test of whether the model layer earns its place — and the one most able to embarrass it.
+
+A layout counts as solved only when every field is on the *right* column, checked against a known-good mapping. Completeness alone is not enough: a mapping that fills every slot with the wrong header produces a ledger, and the ledger is wrong.
+
+| Bank layout | Alias table | Model fallback |
+| --- | --- | --- |
+| ICICI-style | mapped | not consulted |
+| HDFC-style | mapped | not consulted |
+| Kotak-style | mapped | not consulted |
+| SBI-style | mapped | not consulted |
+| Axis-style | mapped | not consulted |
+| Terse export | cannot resolve `txn_date or value_date` | **mapped correctly** |
+| Bilingual export | mapped | not consulted |
+| Column-coded dump | cannot resolve `credit`, `narration`, `txn_date or value_date` | **mapped correctly** |
+
+**6 of 8 layouts need no model at all.** That is the honest headline and it is why the model is a fallback rather than the ingest path. It is consulted only for the 2 the alias table cannot resolve, and mapped 2 of those correctly.
+
+The column-coded dump is the case worth looking at: its headers are `C1`..`C6` and carry no information whatsoever, so no alias table of any length can resolve it. The mapping has to be inferred from the values, which is a different kind of task rather than a longer list — and is the one thing here a model does that a rule cannot.
+
+The mapper proposes; it never applies. Every proposed spec is dry-run against real rows by `validate_spec`, and one that fails to parse is discarded in favour of the heuristic. The worst case is a wasted call.
 
 ## The loop: what is outstanding, and who owns it
 

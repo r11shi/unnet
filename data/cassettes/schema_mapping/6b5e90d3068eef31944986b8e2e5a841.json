@@ -1,0 +1,21 @@
+{
+  "meta": {
+    "model": "gemini-3.6-flash",
+    "backend": "gemini",
+    "task": "schema_mapping",
+    "latency_ms": 6541,
+    "tokens": 1037
+  },
+  "data": {
+    "columns": {
+      "balance": "C6",
+      "bank_ref": "C3",
+      "credit": "C5",
+      "debit": "C4",
+      "narration": "C2",
+      "txn_date": "C1"
+    },
+    "date_format": "%d/%m/%y",
+    "reasoning": "C1 contains transaction dates formatted as %d/%m/%y. C2 contains transaction narration/description. C3 contains bank reference numbers. C4 is debit (empty for this credit transaction). C5 is credit amount (6,08,030.10, matching NEFT CR narration). C6 is the account balance after transaction."
+  }
+}

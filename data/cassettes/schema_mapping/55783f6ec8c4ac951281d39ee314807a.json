@@ -1,0 +1,21 @@
+{
+  "meta": {
+    "model": "gemini-3.6-flash",
+    "backend": "gemini",
+    "task": "schema_mapping",
+    "latency_ms": 16047,
+    "tokens": 917
+  },
+  "data": {
+    "columns": {
+      "balance": "BAL",
+      "bank_ref": "REF",
+      "credit": "CR",
+      "debit": "DR",
+      "narration": "PARTICULARS",
+      "txn_date": "DT"
+    },
+    "date_format": "%d/%m/%y",
+    "reasoning": "Mapped standard bank statement abbreviation headers (DT for transaction date, PARTICULARS for narration, REF for reference number, DR for debit, CR for credit, BAL for balance). The date format is DD/MM/YY."
+  }
+}

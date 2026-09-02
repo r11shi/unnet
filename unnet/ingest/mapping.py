@@ -54,7 +54,19 @@ REQUIRED_FIELDS: dict[str, set[str]] = {
     # A statement with no credit column cannot show a payout arriving, so
     # reading one without it is not a partial success — it silently reconciles
     # nothing and reports every payout as missing.
-    SourceKind.BANK_STATEMENT: {"narration", "value_date", "credit"},
+    SourceKind.BANK_STATEMENT: {"narration", "credit"},
+}
+
+#: Requirements a spec may satisfy in more than one way. Each entry is a set of
+#: interchangeable fields, at least one of which must be mapped.
+#:
+#: Plenty of Indian bank exports carry a single date column — Axis calls it
+#: "Tran Date", a terse export just "DT" — and the loader has always fallen back
+#: to it. Demanding ``value_date`` by name meant validation rejected statements
+#: the parser could read perfectly well, so Unnet refused a real bank format on
+#: a technicality about which of two synonymous columns was present.
+EITHER_FIELDS: dict[str, list[set[str]]] = {
+    SourceKind.BANK_STATEMENT: [{"value_date", "txn_date"}],
 }
 
 OPTIONAL_FIELDS: dict[str, set[str]] = {
@@ -245,7 +257,14 @@ def validate_spec(
     column, fails here rather than silently producing a zero-rupee ledger.
     """
     required = REQUIRED_FIELDS.get(spec.source_kind, set())
-    missing = sorted(required - set(spec.columns))
+    mapped = set(spec.columns)
+    missing = sorted(required - mapped)
+    for alternatives in EITHER_FIELDS.get(spec.source_kind, []):
+        if not (alternatives & mapped):
+            # Name every option, so the error says what the file may supply
+            # rather than only what it happened not to.
+            missing.append(" or ".join(sorted(alternatives)))
+    missing.sort()
 
     unparseable: set[str] = set()
     checked = rows[:sample]

@@ -16,30 +16,9 @@ import pytest
 from unnet.agents.triage import MAX_ATTEMPTS, TriageAgent
 from unnet.core.models import ExceptionStatus
 from unnet.engine.pipeline import SourcePaths, reconcile
-from unnet.llm.provider import LLMResponse
+from unnet.llm.scripted import ScriptedClient
 
 FIXTURES = Path("data/synthetic")
-
-
-class StubClient:
-    """Returns a scripted sequence of model replies, and records the prompts."""
-
-    def __init__(self, replies):
-        self.replies = list(replies)
-        self.prompts: list[str] = []
-        self.calls = 0
-        self.tokens = 0
-        self.limiter = type("L", (), {"per_minute": 0, "waited_seconds": 0.0})()
-        self.degraded = False
-
-    def complete(self, task, prompt, schema):
-        self.prompts.append(prompt)
-        self.calls += 1
-        data = self.replies.pop(0) if self.replies else {"components": [], "reasoning": "done"}
-        return LLMResponse(data=data, source="stub", model="stub", prompt_hash="0" * 12)
-
-    def stats(self):
-        return {"calls": self.calls, "tokens": 0, "degraded": False, "rate_limit_wait_s": 0.0}
 
 
 def _exception(ctx):
@@ -77,7 +56,7 @@ def test_a_rejection_triggers_exactly_one_informed_retry(ctx):
     target = _exception(ctx)
     amount = abs(target.residual_paise)
 
-    stub = StubClient([
+    stub = ScriptedClient([
         # First reply is short by 50 paise, so the verifier rejects it.
         {"components": [{"kind": "bank_charge", "ref": "fee", "amount_paise": amount - 50}],
          "reasoning": "first guess"},
@@ -103,7 +82,7 @@ def test_the_loop_stops_at_the_attempt_limit(ctx):
     target = _exception(ctx)
     wrong = {"components": [{"kind": "bank_charge", "ref": "fee", "amount_paise": 1}],
              "reasoning": "still wrong"}
-    stub = StubClient([wrong] * 10)
+    stub = ScriptedClient([wrong] * 10)
 
     agent = TriageAgent(stub)
     agent._triage_one(ctx, target)
@@ -116,7 +95,7 @@ def test_a_hypothesis_is_terminal_and_never_retried(ctx):
     """Retrying a HYPOTHESIS would spend tokens to arrive at the same place."""
     target = _exception(ctx)
     amount = abs(target.residual_paise)
-    stub = StubClient([
+    stub = ScriptedClient([
         {"components": [{"kind": "bank_charge", "ref": "fee", "amount_paise": amount}],
          "reasoning": "sums exactly, invented component"},
     ])
@@ -130,7 +109,7 @@ def test_a_hypothesis_is_terminal_and_never_retried(ctx):
 
 def test_an_abstention_stops_immediately(ctx):
     target = _exception(ctx)
-    stub = StubClient([{"components": [], "reasoning": "cannot explain this"}])
+    stub = ScriptedClient([{"components": [], "reasoning": "cannot explain this"}])
     agent = TriageAgent(stub)
     agent._triage_one(ctx, target)
 
@@ -142,7 +121,7 @@ def test_every_step_is_recorded_in_the_trace(ctx):
     """A judge must be able to reconstruct exception -> action -> verdict."""
     target = _exception(ctx)
     amount = abs(target.residual_paise)
-    stub = StubClient([
+    stub = ScriptedClient([
         {"components": [{"kind": "bank_charge", "ref": "f", "amount_paise": amount - 50}],
          "reasoning": "a"},
         {"components": [{"kind": "bank_charge", "ref": "f", "amount_paise": amount}],
@@ -156,3 +135,34 @@ def test_every_step_is_recorded_in_the_trace(ctx):
     assert trace[0]["delta_paise"] == -50
     assert trace[1]["verdict"] == "hypothesis"
     assert all("model" in t and "components" in t for t in trace)
+
+
+def test_the_demonstration_command_actually_exercises_the_retry_path(ctx, capsys):
+    """`unnet agent` is the answer to "is the loop real?", so it has to run it.
+
+    A demonstration that quietly stopped forcing a rejection would keep printing
+    a convincing table while proving nothing — the exact failure it exists to
+    rule out.
+    """
+    from unnet.agents.triage import TriageAgent
+    from unnet.llm.scripted import ScriptedClient
+
+    target = _exception(ctx)
+    amount = abs(target.residual_paise)
+    scripted = ScriptedClient([
+        {"components": [{"kind": "bank_charge", "ref": "neft_fee",
+                         "amount_paise": amount - 50}], "reasoning": "first"},
+        {"components": [{"kind": "bank_charge", "ref": "neft_fee_plus_gst",
+                         "amount_paise": amount}], "reasoning": "corrected"},
+    ])
+    loop = TriageAgent(scripted)
+    loop._triage_one(ctx, target)
+
+    trace = (target.evidence or {}).get("agent_trace", [])
+    assert len(trace) == 2, "the demonstration must show two attempts, not one"
+    assert trace[0]["verdict"] == "rejected_sum_mismatch"
+    assert trace[0]["delta_paise"] == -50
+    assert trace[1]["verdict"] == "hypothesis"
+    # The retry has to carry the arithmetic. Without it this is a re-roll.
+    assert "-50 paise" in scripted.prompts[1]
+    assert target.verifier_verdict == "hypothesis", "an unevidenced fix must not close"

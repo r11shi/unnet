@@ -71,6 +71,12 @@ _ESCALATED = {
 @dataclass
 class AgentScore:
     resolutions: int = 0
+    #: Split by who actually closed it. The distinction matters more than the
+    #: total: "0.00% wrong resolutions" is trivially true of a model that closed
+    #: nothing, and reporting the combined figure under an AI heading would take
+    #: credit the deterministic layer earned.
+    resolutions_by_rule: int = 0
+    resolutions_by_model: int = 0
     wrong_resolutions: int = 0
     wrong_examples: list[dict] = field(default_factory=list)
 
@@ -165,6 +171,10 @@ def score_agent(result, truth: dict) -> AgentScore:
 
         if exception.status in _CLOSED:
             out.resolutions += 1
+            if exception.status == ExceptionStatus.AI_RESOLVED:
+                out.resolutions_by_model += 1
+            else:
+                out.resolutions_by_rule += 1
             wrong_reason = _why_wrong(exception, defect, truth_components)
             if wrong_reason:
                 out.wrong_resolutions += 1
@@ -232,29 +242,46 @@ def render_markdown(score: AgentScore) -> str:
     lines = ["## Agent behaviour\n"]
     add = lines.append
     add(
-        "Scored against the held-out truth. The first row is the one that "
-        "matters: a break left in a queue costs an analyst five minutes, a break "
-        "closed *wrongly* goes into the books.\n"
+        "Scored against the held-out truth. Read the first two rows together: "
+        "a wrong-resolution rate says nothing on its own about a model that "
+        "closed nothing, so who closed what comes first.\n"
     )
     add("| Metric | Value |")
     add("| --- | ---: |")
-    add(f"| **Wrong-resolution rate** | **{score.wrong_resolution_rate:.2%}** |")
-    add(f"| Exceptions auto-closed | {score.resolutions} |")
+    add(f"| Verified resolutions closed **by the model** | **{score.resolutions_by_model}** |")
+    add(f"| Verified resolutions closed by rule | {score.resolutions_by_rule} |")
     add(
-        f"| Escalation correctness | {score.escalation_correctness:.0%} "
-        f"({score.correctly_escalated}/{score.should_escalate}) |"
+        f"| Wrong resolutions, across all {score.resolutions} automated closures "
+        f"| **{score.wrong_resolutions}** ({score.wrong_resolution_rate:.2%}) |"
     )
-    add(f"| Hypotheses raised for a human | {score.hypotheses} |")
+    add(f"| Hypotheses quarantined for a human | {score.hypotheses} |")
     add(f"| Proposals the verifier rejected | {score.verifier_rejections} |")
-    add(f"| Model abstained | {score.abstentions} |")
+    add(f"| Model abstentions | {score.abstentions} |")
     add(
-        f"| Routing accuracy | {score.routing_accuracy:.0%} "
-        f"({score.routed_correctly}/{score.routed_cases}) |"
+        f"| Correct escalations | {score.correctly_escalated}/{score.should_escalate} "
+        f"({score.escalation_correctness:.0%}) |"
+    )
+    add(
+        f"| Owner routing, against the fixed table | "
+        f"{score.routed_correctly}/{score.routed_cases} "
+        f"({score.routing_accuracy:.0%}) |"
     )
     add(f"| Model calls | {score.model_calls} |")
     add(f"| Tokens | {score.tokens:,} |")
     add(f"| Tokens per useful outcome | {score.tokens_per_useful_outcome:,.0f} |")
     add("")
+    if score.resolutions_by_model == 0 and score.resolutions:
+        add(
+            f"**The model closed nothing on this data.** All {score.resolutions} "
+            "automated closures were made by the deterministic subset-sum "
+            "resolver, gated by the same verifier. A wrong-resolution rate of "
+            f"{score.wrong_resolution_rate:.2%} is therefore a statement about "
+            "the pipeline, not a claim about the model — what the model "
+            f"contributed here is {score.hypotheses} quarantined "
+            f"{'hypothesis' if score.hypotheses == 1 else 'hypotheses'} and "
+            f"{score.abstentions} "
+            f"{'abstention' if score.abstentions == 1 else 'abstentions'}.\n"
+        )
 
     if score.steps_per_exception:
         most = max(score.steps_per_exception)

@@ -264,6 +264,16 @@ const STATUS_LABEL = Object.fromEntries(STATUSES);
 const STATUS_TONE = {detected:"gray",investigating:"purple",routed:"blue",
                      awaiting_action:"orange",resolved:"green"};
 const PRIO_TONE = {P1:"red",P2:"orange",P3:"gray"};
+// What each verdict permitted. The distinction the whole design rests on is
+// that only the first of these is allowed to touch the books.
+const AI_OUTCOME = {
+  resolved_verified: "Closed. Every component read back from a ledger row.",
+  hypothesis: "Quarantined for a human. Sums, but rests on something unevidenced.",
+  abstained: "Nothing proposed. Left open for a human.",
+  not_attempted: "No model available; left to the rules.",
+};
+const aiOutcome = v => AI_OUTCOME[v]
+  || (v && v.startsWith("rejected") ? "Refused. Arithmetic or citation failed." : "—");
 const IMPACTS = {
   claimable:["Claimable","blue","A counterparty owes this back."],
   at_risk:["At risk","orange","Real money, whereabouts unresolved."],
@@ -690,9 +700,37 @@ async function viewAudit() {
   const params = new URLSearchParams({limit:"400"});
   for (const k of ["stage","decided_by"]) if (q[k]) params.set(k,q[k]);
   const d = await api("/api/audit?"+params);
+  // The model's decisions are the ones a reviewer came here to check, and there
+  // are three of them among seventeen hundred rule rows. Filtering to find them
+  // requires already knowing they exist, so they get their own panel first —
+  // the same audit rows, not a second source of truth.
+  const ai = (await api("/api/audit?decided_by=model&limit=50")).items;
+
   let h = `<div class="head"><div><h2>Audit trail</h2>
     <p>Append-only. Every decision, in the order it was made, with who decided and what the
        verifier said. Model decisions carry a prompt hash so the exact input is recoverable.</p></div></div>`;
+
+  h += `<div class="panel"><h3>What the model decided this run
+      <span class="note">${ai.length} of ${num(d.total)} decisions</span></h3>
+    <div class="body" style="padding:0"><table><thead><tr>
+      <th>Subject</th><th>Decision</th><th>Verifier</th><th>Outcome</th><th>Model · prompt</th>
+    </tr></thead><tbody>`;
+  for (const a of ai) {
+    const v = verdictOf(a.verifier_result);
+    h += `<tr><td class="mono">${esc(a.subject_id)}</td>
+      <td>${esc(a.decision)}</td>
+      <td>${v ? badge(v[0], v[1]) : badge(esc(a.verifier_result||"—"),"gray")}</td>
+      <td class="muted">${esc(aiOutcome(a.verifier_result))}</td>
+      <td class="mono soft">${esc(a.decider_ref)}</td></tr>`;
+  }
+  if (!ai.length) h += `<tr><td colspan="5"><div class="empty">No model was consulted in this run —
+      every break was settled or routed by rule.</div></td></tr>`;
+  h += `</tbody></table></div>
+    <div class="body" style="border-top:1px solid var(--stroke-soft)">
+      <span class="soft">Every row above is one entry in the table below, shown here because
+      finding three model decisions among ${num(d.total)} requires already knowing they are there.
+      A verdict is what the verifier concluded; the outcome is what Unnet was therefore allowed
+      to do about it.</span></div></div>`;
   h += `<div class="filters"><label>Stage</label><select id="aStage"><option value="">all</option>`;
   for (const s of ["ingest","tier1_bank_to_batch","tier2_line_to_order","tier3_reversal_to_payment","triage","exception","human_review","case_resolution"])
     h += `<option value="${s}" ${q.stage===s?"selected":""}>${s}</option>`;

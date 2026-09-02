@@ -12,6 +12,8 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 
 from rich.console import Console
@@ -59,9 +61,28 @@ def cmd_gen(args) -> int:
     return 0
 
 
-def _run(args, *, ai_enabled: bool, label: str, data: str | None = None):
+@contextmanager
+def _scratch_db():
+    """A throwaway database for a measurement.
+
+    `eval` and `ablation` answer "how good is this?", which is a question about
+    the code, not an operation on the merchant's books. Running them against
+    `data/unnet.db` wrote four extra runs into the operational store every time
+    — including the robustness profile, whose 1,191 exceptions became permanent
+    cases with subject ids no standard run ever revisits, so they could never be
+    cleared. `make demo && make ablation` left the dashboard showing 1,208 open
+    cases and an audit trail whose latest run had consulted no model at all.
+
+    A measurement gets its own database and throws it away.
+    """
+    with tempfile.TemporaryDirectory(prefix="unnet-eval-") as directory:
+        yield str(Path(directory) / "scratch.db")
+
+
+def _run(args, *, ai_enabled: bool, label: str, data: str | None = None,
+         db: str | None = None):
     client = build_client(provider=args.provider) if ai_enabled else None
-    engine = make_engine(args.db)
+    engine = make_engine(db or args.db)
     data = data or args.data
 
     with session_scope(engine) as session:
@@ -141,7 +162,10 @@ def cmd_recon(args) -> int:
 
 def cmd_eval(args) -> int:
     truth = load_truth(Path(args.data) / "ground_truth.json")
-    result, _ = _run(args, ai_enabled=not args.rules_only, label="eval")
+    with _scratch_db() as scratch:
+        result, _ = _run(
+            args, ai_enabled=not args.rules_only, label="eval", db=scratch
+        )
     report = score(result, truth, label="rules + model" if not args.rules_only else "rules only")
 
     console.print(f"Auto-match rate      [bold]{report.auto_match_rate:.2%}[/bold]")
@@ -159,10 +183,14 @@ def cmd_ablation(args) -> int:
     """The comparison that says whether the model layer is worth having."""
     truth = load_truth(Path(args.data) / "ground_truth.json")
 
-    baseline_result, _ = _run(args, ai_enabled=False, label="rules only")
+    # Each regime gets a fresh scratch database, so no comparison inherits the
+    # cases the previous one left behind, and none of them touch the real store.
+    with _scratch_db() as scratch:
+        baseline_result, _ = _run(args, ai_enabled=False, label="rules only", db=scratch)
     baseline = score(baseline_result, truth, label="rules only")
 
-    ai_result, client = _run(args, ai_enabled=True, label="rules + model")
+    with _scratch_db() as scratch:
+        ai_result, client = _run(args, ai_enabled=True, label="rules + model", db=scratch)
     ai_report = score(ai_result, truth, label="rules + model")
 
     # The robustness profile, if it has been generated. Computed before the
@@ -170,9 +198,11 @@ def cmd_ablation(args) -> int:
     messy_report = None
     messy_dir = Path(args.messy_data)
     if (messy_dir / "ground_truth.json").exists():
-        messy_result, _ = _run(
-            args, ai_enabled=False, label="messy / rules only", data=str(messy_dir)
-        )
+        with _scratch_db() as scratch:
+            messy_result, _ = _run(
+                args, ai_enabled=False, label="messy / rules only",
+                data=str(messy_dir), db=scratch,
+            )
         messy_report = score(
             messy_result,
             load_truth(messy_dir / "ground_truth.json"),
@@ -238,8 +268,28 @@ def cmd_ablation(args) -> int:
     agent_table.add_row("Tokens / useful outcome", f"{agent.tokens_per_useful_outcome:,.0f}")
     console.print(agent_table)
 
+    # Schema mapping is measured separately because it is the only place the
+    # deterministic answer is structurally incomplete rather than merely
+    # fiddly — and because on most layouts it shows the model is not needed.
+    from unnet.evaluation.schema_bench import render_markdown as render_schema
+    from unnet.evaluation.schema_bench import run_bench
+
+    bench = run_bench(client)
+    schema_table = Table(
+        title="Schema mapping — realistic bank layouts", header_style="bold"
+    )
+    schema_table.add_column("Metric")
+    schema_table.add_column("Value", justify="right")
+    schema_table.add_row("Layouts tested", f"{len(bench.results)}")
+    schema_table.add_row("Solved by the alias table alone", f"{bench.heuristic_solved}")
+    schema_table.add_row("Needed the model", f"{len(bench.results) - bench.heuristic_solved}")
+    schema_table.add_row("Recovered correctly by the model", f"{bench.model_recovered}")
+    schema_table.add_row("Still unsolved", f"{bench.unsolved}")
+    console.print(schema_table)
+
     markdown = render_markdown(ai_report, ablation=baseline, messy=messy_report)
     markdown += "\n" + render_agent(agent)
+    markdown += "\n" + render_schema(bench)
     markdown += "\n" + _render_cases(ai_result)
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     Path(args.out).write_text(markdown)
@@ -254,6 +304,154 @@ def cmd_ablation(args) -> int:
                 "configured, so the model column above is the rules result. "
                 "See README: 'Running the agents'."
             )
+    return 0
+
+
+def cmd_agent(args) -> int:
+    """What the agent actually does, measured — and the loop, forced.
+
+    Two sections, kept apart on purpose. The first is the production fixtures:
+    how many model calls each exception really cost and how often the retry
+    path fired. On this data the answer is "one call, no retries", and that is
+    published rather than dressed up. The second forces a rejection with a
+    scripted model so the adaptive path can be watched end to end, and is
+    labelled as the demonstration it is.
+
+    A loop that never runs is how every fake agent is built, so both halves
+    have to be visible: the mechanism is real, and this data does not need it.
+    """
+    from unnet.agents.triage import MAX_ATTEMPTS, TriageAgent
+    from unnet.core.models import ExceptionCode, ExceptionStatus
+    from unnet.llm.scripted import ScriptedClient
+
+    with _scratch_db() as scratch:
+        result, client = _run(args, ai_enabled=True, label="agent", db=scratch)
+    agent = score_agent(result, load_truth(Path(args.data) / "ground_truth.json"))
+
+    console.print()
+    console.print("[bold]Measured — the production fixtures[/bold]")
+    measured = Table(header_style="bold", show_header=True)
+    measured.add_column("Metric")
+    measured.add_column("Value", justify="right")
+    calls = agent.steps_per_exception
+    measured.add_row("Exceptions the model was asked about", f"{len(calls)}")
+    measured.add_row("Model calls per exception", str(calls) if calls else "—")
+    measured.add_row("Retries the verifier forced", f"{agent.retries}")
+    measured.add_row(
+        "Verified resolutions, closed by rule", f"{agent.resolutions_by_rule}"
+    )
+    measured.add_row(
+        "Verified resolutions, closed by model", f"{agent.resolutions_by_model}"
+    )
+    measured.add_row("Hypotheses quarantined for a human", f"{agent.hypotheses}")
+    measured.add_row("Verifier rejections", f"{agent.verifier_rejections}")
+    measured.add_row("Abstentions", f"{agent.abstentions}")
+    measured.add_row("Tokens", f"{agent.tokens:,}")
+    console.print(measured)
+
+    if agent.resolutions_by_model == 0:
+        console.print(
+            f"[dim]The model closed nothing. The {agent.resolutions_by_rule} verified "
+            "resolutions above were made by the deterministic subset-sum resolver, "
+            "which the verifier gates on the same terms. A wrong-resolution rate of "
+            "zero is therefore a statement about the pipeline, not a claim about "
+            "the model.[/dim]"
+        )
+
+    if agent.retries == 0:
+        console.print(
+            "[dim]No retry was needed on this data: deterministic candidate "
+            "generation runs first, so the model's single attempt was either "
+            "right or an honest abstention. The loop below is the same code "
+            "path, driven by a scripted model.[/dim]"
+        )
+
+    # ---------------------------------------------------------------- #
+    # The forced demonstration.
+    # ---------------------------------------------------------------- #
+    target = None
+    for exception in result.ctx.exceptions:
+        if exception.code == ExceptionCode.SHORT_CREDIT:
+            target = exception
+            break
+    if target is None:
+        console.print("[yellow]No short credit in the fixtures to demonstrate on.[/yellow]")
+        return 0
+
+    amount = abs(target.residual_paise)
+    target.status = ExceptionStatus.OPEN
+    target.proposal = None
+    target.verifier_verdict = None
+    target.evidence = {
+        k: v for k, v in (target.evidence or {}).items() if k != "agent_trace"
+    }
+
+    scripted = ScriptedClient([
+        # Attempt 1: 50 paise short. The verifier can only reject this.
+        {"components": [{"kind": "bank_charge", "ref": "neft_fee",
+                         "amount_paise": amount - 50}],
+         "reasoning": "Looks like the bank's inward NEFT charge."},
+        # Attempt 2: corrected using the delta the verifier handed back.
+        {"components": [{"kind": "bank_charge", "ref": "neft_fee_plus_gst",
+                         "amount_paise": amount}],
+         "reasoning": "Adding the 18% GST on that charge closes the gap exactly."},
+    ])
+    loop = TriageAgent(scripted)
+    loop._triage_one(result.ctx, target)
+
+    console.print()
+    console.print(
+        f"[bold]Forced — the same loop, with a model scripted to be wrong first[/bold]"
+    )
+    console.print(
+        f"[dim]Subject {target.subject_id}, residual {format_inr(amount)}. "
+        f"Attempt limit is {MAX_ATTEMPTS}.[/dim]"
+    )
+
+    trace = (target.evidence or {}).get("agent_trace", [])
+    steps = Table(header_style="bold")
+    steps.add_column("#", justify="right")
+    steps.add_column("Action")
+    steps.add_column("Proposed")
+    steps.add_column("Verifier")
+    steps.add_column("Out by", justify="right")
+    for step in trace:
+        components = "  +  ".join(step.get("components") or []) or "—"
+        delta = step.get("delta_paise")
+        steps.add_row(
+            str(step.get("step", "")),
+            str(step.get("action", "")),
+            components,
+            str(step.get("verdict") or "—"),
+            format_inr(delta) if delta else "—",
+        )
+    console.print(steps)
+
+    console.print(
+        f"Model calls [bold]{scripted.calls}[/bold] · "
+        f"retries [bold]{loop.retries}[/bold] · "
+        f"terminal verdict [bold]{target.verifier_verdict}[/bold]"
+    )
+
+    # The thing that makes it a loop rather than a re-roll: the second prompt
+    # carries the verifier's arithmetic, not just "that was wrong, try again".
+    if len(scripted.prompts) > 1:
+        fed_back = [
+            line.strip()
+            for line in scripted.prompts[1].splitlines()
+            if "out by" in line.lower() or "REJECTED" in line
+        ]
+        console.print()
+        console.print("[bold]What the second attempt was told[/bold]")
+        for line in fed_back or ["(the retry prompt carried no verifier finding)"]:
+            console.print(f"  [dim]{line}[/dim]")
+
+    console.print()
+    console.print(
+        "[dim]The revised proposal sums exactly and is still quarantined as a "
+        "hypothesis, because a bank charge appears in no table we hold. "
+        "Arithmetic is not provenance.[/dim]"
+    )
     return 0
 
 
@@ -407,6 +605,12 @@ def main(argv: list[str] | None = None) -> int:
     ab.add_argument("--out", default="docs/METRICS.md")
     ab.add_argument("--messy-data", default="data/synthetic_messy")
     ab.set_defaults(func=cmd_ablation)
+
+    ag = sub.add_parser(
+        "agent", help="what the agent measurably did, and the retry loop forced"
+    )
+    ag.add_argument("--out", default="docs/METRICS.md", help="unused; kept for symmetry")
+    ag.set_defaults(func=cmd_agent, rules_only=False, label="agent")
 
     cases = sub.add_parser("cases", help="outstanding work, by owner and impact")
     cases.add_argument("--owner", default="", help="list open cases for one owner")
