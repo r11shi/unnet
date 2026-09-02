@@ -82,7 +82,7 @@ def _run(args, *, ai_enabled: bool, label: str, data: str | None = None):
             previous_cases=previous,
         )
         _persist(session, result)
-        casefile.persist(session, result.cases, run_id)
+        casefile.persist(session, result.cases, run_id, previous)
 
     return result, client
 

@@ -335,8 +335,10 @@ class CaseFileRow(SQLModel, table=True):
     message: str
     amount_paise: int = 0
 
-    #: open | routed | resolved
-    status: str = Field(default="routed", index=True)
+    #: detected | investigating | routed | awaiting_action | resolved
+    status: str = Field(default="detected", index=True)
+    #: P1 | P2 | P3, derived arithmetically in engine/lifecycle.py
+    priority: str = Field(default="P3", index=True)
 
     evidence: dict = Field(default_factory=dict, sa_column=Column(JSON))
     #: The model's unverified explanation, when there is one. Carried so the
@@ -347,4 +349,42 @@ class CaseFileRow(SQLModel, table=True):
     last_seen_run: str = ""
     resolved_run: str = ""
     resolved_note: str = ""
+
+    #: Real timestamps, because ageing is the prioritisation signal on an ops
+    #: queue and a run id carries no time. first_seen_at survives across runs;
+    #: last_seen_at moves each time the case is still present.
+    first_seen_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    last_seen_at: datetime = Field(default_factory=datetime.utcnow)
+
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class CaseEvent(SQLModel, table=True):
+    """One thing that happened to a case.
+
+    This is what makes a case operational work rather than an error row: an
+    analyst picking it up can see it was detected on Tuesday, that a model
+    proposed an explanation the verifier would not accept, that it was routed to
+    the bank on Thursday, and that nobody has chased it since.
+
+    Append-only, like the audit trail, and for the same reason — the history of
+    a financial item is part of the item.
+    """
+
+    __tablename__ = "case_event"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    case_key: str = Field(index=True)
+    run_id: str = Field(default="", index=True)
+
+    #: rule | model | human
+    actor: DecidedBy = DecidedBy.RULE
+    #: detected | status_changed | proposed | verified | routed | resolved | note
+    kind: str = Field(index=True)
+    note: str = ""
+
+    from_status: str = ""
+    to_status: str = ""
+
+    detail: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    at: datetime = Field(default_factory=datetime.utcnow, index=True)

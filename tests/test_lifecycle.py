@@ -1,0 +1,163 @@
+"""Case state, priority and ageing — all decided by rule, never by a model.
+
+An operator sorting a queue needs the order to be stable, explicable and the
+same tomorrow. "The model thought this looked urgent" is not defensible in a
+review, so every rule here is a pure function and is tested as one.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+import pytest
+
+from unnet.core.db import make_engine, session_scope
+from unnet.engine import casefile
+from unnet.engine.lifecycle import (
+    CaseStatus,
+    ageing_bucket,
+    age_days,
+    can_transition,
+    initial_status,
+    priority,
+)
+from unnet.engine.pipeline import SourcePaths, reconcile
+
+FIXTURES = Path("data/synthetic")
+NOW = datetime(2026, 9, 1, 12, 0, tzinfo=timezone.utc)
+
+
+def test_an_unverified_hypothesis_means_we_are_still_investigating():
+    """Asking a bank to act on a guess the verifier would not accept is worse
+    than useless, so a case carrying one never leaves our desk."""
+    assert initial_status("bank", True) == CaseStatus.INVESTIGATING
+    assert initial_status("finance_ops", True) == CaseStatus.INVESTIGATING
+
+
+def test_external_owners_await_action_and_internal_ones_are_routed():
+    """The distinction the three-state model could not express: work we owe
+    versus work someone else owes us. Different queues, different people."""
+    for owner in ("bank", "razorpay_support", "razorpay_risk"):
+        assert initial_status(owner, False) == CaseStatus.AWAITING_ACTION
+    for owner in ("finance_ops", "merchant_ops", "engineering"):
+        assert initial_status(owner, False) == CaseStatus.ROUTED
+
+
+def test_priority_rises_with_money():
+    assert priority(43_712_20, "contestable_loss", NOW, NOW) == "P1"
+    assert priority(62_00, "claimable", NOW, NOW) == "P3"
+
+
+def test_priority_weights_by_how_the_money_is_at_stake():
+    """A rupee a supplier owes back is worth chasing harder than a rupee of
+    bookkeeping that moves no money at all."""
+    amount = 3_000_00
+    assert priority(amount, "claimable", NOW, NOW) == "P2"
+    assert priority(amount, "bookkeeping", NOW, NOW) == "P3"
+
+
+def test_a_small_case_nobody_touched_escalates_on_age_alone():
+    """Small items that sit forever are how a queue rots."""
+    old = NOW - timedelta(days=20)
+    assert priority(62_00, "claimable", NOW, NOW) == "P3"
+    assert priority(62_00, "claimable", old, NOW) == "P1"
+
+
+def test_age_escalates_but_never_de_escalates():
+    """A large case does not become less urgent by getting older."""
+    big_new = priority(50_000_00, "claimable", NOW, NOW)
+    big_old = priority(50_000_00, "claimable", NOW - timedelta(days=30), NOW)
+    assert big_new == big_old == "P1"
+
+
+@pytest.mark.parametrize(
+    "days,bucket",
+    [(0, "today"), (0.5, "today"), (2, "1-3d"), (5, "3-7d"), (10, "7-14d"), (40, "14d+")],
+)
+def test_ageing_buckets(days, bucket):
+    assert ageing_bucket(NOW - timedelta(days=days), NOW) == bucket
+
+
+def test_age_is_computed_from_a_timestamp_not_a_run_id():
+    """The v2 bug: first_seen_run held a hex id with no time in it, so ageing
+    was uncomputable and the queue could only say 'new' or 'carried'."""
+    assert age_days(NOW - timedelta(days=3), NOW) == pytest.approx(3.0)
+    assert age_days(None) == 0.0
+
+
+def test_resolved_is_terminal():
+    """A settled case does not reopen because the source rows still look the
+    same. That is the whole point of tracking identity across runs."""
+    assert not can_transition(CaseStatus.RESOLVED, CaseStatus.ROUTED)
+    assert can_transition(CaseStatus.ROUTED, CaseStatus.AWAITING_ACTION)
+
+
+pytestmark_fixtures = pytest.mark.skipif(
+    not (FIXTURES / "ground_truth.json").exists(), reason="run `make gen`"
+)
+
+
+@pytestmark_fixtures
+def test_case_state_is_stored_once_and_does_not_grow_with_runs(tmp_path):
+    """The performance defect: case_file was a snapshot per case per run, and
+    both the API and every reconciliation scanned the whole table to work out
+    today's state. Answering 'what is outstanding' must not get slower every
+    time the job runs."""
+    from sqlmodel import select
+
+    from unnet.core.models import CaseFileRow
+
+    engine = make_engine(tmp_path / "growth.db")
+    counts = []
+    for index in range(4):
+        with session_scope(engine) as session:
+            previous = casefile.load_previous(session)
+            result = reconcile(
+                SourcePaths.synthetic(FIXTURES), run_id=f"r{index}", ai_enabled=False
+            )
+            built = casefile.build_cases(result.ctx, f"r{index}", previous)
+            casefile.persist(session, built, f"r{index}", previous)
+        with session_scope(engine) as session:
+            counts.append(len(session.exec(select(CaseFileRow)).all()))
+
+    assert len(set(counts)) == 1, f"state table grew across runs: {counts}"
+    assert counts[0] == len(built)
+
+
+@pytestmark_fixtures
+def test_history_records_detection_and_resolution(tmp_path):
+    engine = make_engine(tmp_path / "history.db")
+    with session_scope(engine) as session:
+        result = reconcile(SourcePaths.synthetic(FIXTURES), run_id="r1", ai_enabled=False)
+        built = casefile.build_cases(result.ctx, "r1")
+        casefile.persist(session, built, "r1", {})
+    target = max(built, key=lambda c: c.amount_paise)
+
+    with session_scope(engine) as session:
+        casefile.resolve(session, target.case_key, run_id="manual", note="settled")
+
+    with session_scope(engine) as session:
+        kinds = [e.kind for e in casefile.load_events(session, target.case_key)]
+    assert kinds[0] == "detected"
+    assert "resolved" in kinds
+
+
+@pytestmark_fixtures
+def test_ageing_survives_across_runs(tmp_path):
+    """first_seen_at must not reset every morning, or ageing means nothing."""
+    engine = make_engine(tmp_path / "age.db")
+    with session_scope(engine) as session:
+        first = reconcile(SourcePaths.synthetic(FIXTURES), run_id="r1", ai_enabled=False)
+        built = casefile.build_cases(first.ctx, "r1")
+        casefile.persist(session, built, "r1", {})
+    original = {c.case_key: c.first_seen_at for c in built}
+
+    with session_scope(engine) as session:
+        previous = casefile.load_previous(session)
+        second = reconcile(SourcePaths.synthetic(FIXTURES), run_id="r2", ai_enabled=False)
+        again = casefile.build_cases(second.ctx, "r2", previous)
+
+    for case in again:
+        if case.case_key in original:
+            assert case.first_seen_at == original[case.case_key]

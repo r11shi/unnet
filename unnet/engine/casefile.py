@@ -30,9 +30,23 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
+
+
+def utc_now() -> datetime:
+    """Naive UTC, deliberately.
+
+    SQLite has no timezone type, so a tz-aware datetime written through
+    SQLModel comes back naive. Mixing the two means every comparison between a
+    freshly-built case and a stored one raises, and ageing silently breaks. One
+    representation everywhere is simpler than remembering which side of the
+    database you are on.
+    """
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 from unnet.core.models import ExceptionCode, ExceptionStatus
 from unnet.core.money import format_inr
+from unnet.engine.lifecycle import CaseStatus, ageing_bucket, age_days, initial_status, priority
 
 
 class Owner:
@@ -188,16 +202,31 @@ class CaseFile:
     action: str
     message: str
     amount_paise: int
-    status: str = "open"  # open | routed | resolved
+    status: str = CaseStatus.DETECTED
+    priority: str = "P3"
     evidence: dict = field(default_factory=dict)
     hypothesis: dict | None = None
     first_seen_run: str = ""
     last_seen_run: str = ""
     resolved_run: str = ""
+    first_seen_at: datetime | None = None
+    last_seen_at: datetime | None = None
 
     @property
     def amount_display(self) -> str:
         return format_inr(self.amount_paise)
+
+    @property
+    def age_days(self) -> float:
+        return age_days(self.first_seen_at)
+
+    @property
+    def ageing_bucket(self) -> str:
+        return ageing_bucket(self.first_seen_at)
+
+    @property
+    def is_open(self) -> bool:
+        return self.status != CaseStatus.RESOLVED
 
 
 def case_key(code: str, subject_kind: str, subject_id: str) -> str:
@@ -242,12 +271,23 @@ def build_cases(ctx, run_id: str, previous: dict[str, CaseFile] | None = None) -
 
         # A case a human already settled does not come back just because the
         # underlying rows still look the same.
-        if known is not None and known.status == "resolved":
+        if known is not None and known.status == CaseStatus.RESOLVED:
             known.last_seen_run = run_id
+            known.last_seen_at = utc_now()
             cases.append(known)
             continue
 
         evidence = dict(exception.evidence or {})
+        hypothesis = (
+            exception.proposal
+            if exception.status == ExceptionStatus.AI_HYPOTHESIS
+            else None
+        )
+        now = utc_now()
+        # Ageing must survive across runs, so a case we have seen before keeps
+        # the moment it was first raised. A run id carries no time.
+        first_at = known.first_seen_at if known and known.first_seen_at else now
+
         cases.append(
             CaseFile(
                 case_key=key,
@@ -259,19 +299,28 @@ def build_cases(ctx, run_id: str, previous: dict[str, CaseFile] | None = None) -
                 action=route.action,
                 message=_render(route.template, exception, evidence),
                 amount_paise=abs(exception.residual_paise),
-                status="routed",
-                evidence=evidence,
-                hypothesis=(
-                    exception.proposal
-                    if exception.status == ExceptionStatus.AI_HYPOTHESIS
-                    else None
+                # A human may already have moved this case along; only fall back
+                # to the rule when we have never seen it before.
+                status=(
+                    known.status
+                    if known and known.status != CaseStatus.DETECTED
+                    else initial_status(route.owner, hypothesis is not None)
                 ),
+                priority=priority(
+                    abs(exception.residual_paise), route.impact, first_at, now
+                ),
+                evidence=evidence,
+                hypothesis=hypothesis,
                 first_seen_run=known.first_seen_run if known else run_id,
                 last_seen_run=run_id,
+                first_seen_at=first_at,
+                last_seen_at=now,
             )
         )
 
-    cases.sort(key=lambda c: -c.amount_paise)
+    # Highest priority first, then by money. An operator works down this list.
+    rank = {"P1": 0, "P2": 1, "P3": 2}
+    cases.sort(key=lambda c: (rank.get(c.priority, 9), -c.amount_paise))
     return cases
 
 
@@ -322,7 +371,7 @@ def summarise(cases: list[CaseFile]) -> dict:
     by_owner: dict[str, dict] = {}
 
     for case in cases:
-        if case.status == "resolved":
+        if not case.is_open:
             continue
         impact = by_impact.setdefault(case.impact, {"count": 0, "paise": 0})
         impact["count"] += 1
@@ -332,9 +381,24 @@ def summarise(cases: list[CaseFile]) -> dict:
         owner["count"] += 1
         owner["paise"] += case.amount_paise
 
+    by_status: dict[str, int] = {}
+    by_priority: dict[str, int] = {}
+    by_age: dict[str, int] = {}
+    for case in cases:
+        by_status[case.status] = by_status.get(case.status, 0) + 1
+        if case.is_open:
+            by_priority[case.priority] = by_priority.get(case.priority, 0) + 1
+            by_age[case.ageing_bucket] = by_age.get(case.ageing_bucket, 0) + 1
+
     return {
-        "open_cases": sum(1 for c in cases if c.status != "resolved"),
-        "resolved_cases": sum(1 for c in cases if c.status == "resolved"),
+        "open_cases": sum(1 for c in cases if c.is_open),
+        "resolved_cases": sum(1 for c in cases if not c.is_open),
+        "by_status": by_status,
+        "by_priority": by_priority,
+        "by_ageing": by_age,
+        "oldest_open_days": round(
+            max((c.age_days for c in cases if c.is_open), default=0.0), 1
+        ),
         "by_impact": by_impact,
         "by_owner": by_owner,
         "claimable_paise": by_impact.get(Impact.CLAIMABLE, {}).get("paise", 0),
@@ -351,101 +415,183 @@ def summarise(cases: list[CaseFile]) -> dict:
 
 
 def load_previous(session) -> dict[str, CaseFile]:
-    """The most recent state of every case this account has ever opened.
+    """The current state of every case.
 
-    Read across all runs rather than just the last one, keyed by ``case_key``,
-    so a case resolved three runs ago is still known to be resolved even if the
-    intervening runs never saw it.
+    ``case_file`` holds exactly one row per case and is updated in place;
+    ``case_event`` holds the append-only history. Splitting them that way keeps
+    this query O(open cases) instead of O(runs x cases) — an earlier version
+    wrote a snapshot row per case per run and then scanned the whole table to
+    work out today's state, so the cost of answering "what is outstanding" grew
+    every time the job ran.
     """
     from sqlmodel import select
 
     from unnet.core.models import CaseFileRow
 
-    rows = session.exec(select(CaseFileRow).order_by(CaseFileRow.id)).all()
-    latest: dict[str, CaseFile] = {}
-    for row in rows:
-        latest[row.case_key] = CaseFile(
-            case_key=row.case_key,
-            code=row.code,
-            subject_kind=row.subject_kind,
-            subject_id=row.subject_id,
-            owner=row.owner,
-            impact=row.impact,
-            action=row.action,
-            message=row.message,
-            amount_paise=row.amount_paise,
-            status=row.status,
-            evidence=row.evidence or {},
-            hypothesis=row.hypothesis,
-            first_seen_run=row.first_seen_run,
-            last_seen_run=row.last_seen_run,
-            resolved_run=row.resolved_run,
-        )
-    return latest
+    rows = session.exec(select(CaseFileRow)).all()
+    return {row.case_key: _to_case(row) for row in rows}
 
 
-def persist(session, cases: list[CaseFile], run_id: str) -> None:
-    from unnet.core.models import CaseFileRow
+def _to_case(row) -> CaseFile:
+    return CaseFile(
+        case_key=row.case_key,
+        code=row.code,
+        subject_kind=row.subject_kind,
+        subject_id=row.subject_id,
+        owner=row.owner,
+        impact=row.impact,
+        action=row.action,
+        message=row.message,
+        amount_paise=row.amount_paise,
+        status=row.status,
+        priority=row.priority,
+        evidence=row.evidence or {},
+        hypothesis=row.hypothesis,
+        first_seen_run=row.first_seen_run,
+        last_seen_run=row.last_seen_run,
+        resolved_run=row.resolved_run,
+        first_seen_at=row.first_seen_at,
+        last_seen_at=row.last_seen_at,
+    )
+
+
+def record_event(
+    session,
+    case_key_value: str,
+    *,
+    kind: str,
+    note: str = "",
+    actor=None,
+    run_id: str = "",
+    from_status: str = "",
+    to_status: str = "",
+    detail: dict | None = None,
+):
+    """Append one thing that happened to a case.
+
+    Append-only, like the audit trail: the history of a financial item is part
+    of the item, and an analyst picking a case up needs to see that a model
+    proposed something the verifier refused before they go and ask a bank.
+    """
+    from unnet.core.models import CaseEvent, DecidedBy
+
+    event = CaseEvent(
+        case_key=case_key_value,
+        run_id=run_id,
+        actor=actor or DecidedBy.RULE,
+        kind=kind,
+        note=note[:500],
+        from_status=from_status,
+        to_status=to_status,
+        detail=detail or {},
+    )
+    session.add(event)
+    return event
+
+
+def load_events(session, case_key_value: str) -> list:
+    from sqlmodel import select
+
+    from unnet.core.models import CaseEvent
+
+    return session.exec(
+        select(CaseEvent)
+        .where(CaseEvent.case_key == case_key_value)
+        .order_by(CaseEvent.id)
+    ).all()
+
+
+def persist(
+    session, cases: list[CaseFile], run_id: str, previous: dict[str, CaseFile] | None = None
+) -> None:
+    """Write current state, and append history for whatever changed."""
+    from sqlmodel import select
+
+    from unnet.core.models import CaseFileRow, DecidedBy
+
+    prior = previous or {}
+    existing = {
+        row.case_key: row for row in session.exec(select(CaseFileRow)).all()
+    }
 
     for case in cases:
-        session.add(
-            CaseFileRow(
-                run_id=run_id,
-                case_key=case.case_key,
-                code=case.code,
-                subject_kind=case.subject_kind,
-                subject_id=case.subject_id,
-                owner=case.owner,
-                impact=case.impact,
-                action=case.action,
-                message=case.message,
-                amount_paise=case.amount_paise,
-                status=case.status,
-                evidence=case.evidence,
-                hypothesis=case.hypothesis,
-                first_seen_run=case.first_seen_run,
-                last_seen_run=case.last_seen_run,
-                resolved_run=case.resolved_run,
+        known = prior.get(case.case_key)
+
+        if known is None:
+            record_event(
+                session, case.case_key, kind="detected", run_id=run_id,
+                to_status=case.status,
+                note=f"Raised as {case.code} and routed to {case.owner}.",
+                detail={"amount_paise": case.amount_paise, "priority": case.priority},
             )
-        )
+            if case.hypothesis:
+                record_event(
+                    session, case.case_key, kind="proposed", run_id=run_id,
+                    actor=DecidedBy.MODEL,
+                    note=str(case.hypothesis.get("reasoning", ""))[:400],
+                    detail={"components": case.hypothesis.get("components", [])},
+                )
+        elif known.status != case.status:
+            record_event(
+                session, case.case_key, kind="status_changed", run_id=run_id,
+                from_status=known.status, to_status=case.status,
+            )
+        elif known.priority != case.priority:
+            record_event(
+                session, case.case_key, kind="note", run_id=run_id,
+                note=f"Priority moved {known.priority} to {case.priority} with age.",
+            )
+
+        row = existing.get(case.case_key)
+        if row is None:
+            row = CaseFileRow(case_key=case.case_key, first_seen_at=case.first_seen_at)
+            session.add(row)
+
+        row.run_id = run_id
+        row.code = case.code
+        row.subject_kind = case.subject_kind
+        row.subject_id = case.subject_id
+        row.owner = case.owner
+        row.impact = case.impact
+        row.action = case.action
+        row.message = case.message
+        row.amount_paise = case.amount_paise
+        row.status = case.status
+        row.priority = case.priority
+        row.evidence = case.evidence
+        row.hypothesis = case.hypothesis
+        row.first_seen_run = case.first_seen_run
+        row.last_seen_run = case.last_seen_run
+        row.resolved_run = case.resolved_run
+        row.last_seen_at = case.last_seen_at
 
 
 def resolve(session, case_key_value: str, run_id: str, note: str = "") -> int:
     """Mark a case settled. Returns how many rows were updated.
 
-    Writes a new row rather than mutating history: the trail should show that a
-    case was open and then became resolved, not that it was always resolved.
+    The state row is updated in place; the fact that it *was* open and then
+    became resolved lives in ``case_event``, which is where history belongs.
     """
     from sqlmodel import select
 
-    from unnet.core.models import CaseFileRow
+    from unnet.core.models import CaseFileRow, DecidedBy
 
-    rows = session.exec(
+    row = session.exec(
         select(CaseFileRow).where(CaseFileRow.case_key == case_key_value)
-    ).all()
-    if not rows:
+    ).first()
+    if row is None:
         return 0
 
-    latest = rows[-1]
-    session.add(
-        CaseFileRow(
-            run_id=run_id,
-            case_key=latest.case_key,
-            code=latest.code,
-            subject_kind=latest.subject_kind,
-            subject_id=latest.subject_id,
-            owner=latest.owner,
-            impact=latest.impact,
-            action=latest.action,
-            message=latest.message,
-            amount_paise=latest.amount_paise,
-            status="resolved",
-            evidence=latest.evidence,
-            hypothesis=latest.hypothesis,
-            first_seen_run=latest.first_seen_run,
-            last_seen_run=run_id,
-            resolved_run=run_id,
-            resolved_note=note,
-        )
+    was = row.status
+    row.status = CaseStatus.RESOLVED
+    row.resolved_run = run_id
+    row.resolved_note = note
+    row.last_seen_run = run_id
+    row.last_seen_at = utc_now()
+
+    record_event(
+        session, row.case_key, kind="resolved", run_id=run_id,
+        actor=DecidedBy.HUMAN, from_status=was,
+        to_status=CaseStatus.RESOLVED, note=note,
     )
     return 1
