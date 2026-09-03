@@ -495,8 +495,12 @@ def cases(owner: str | None = None, impact: str | None = None, status: str | Non
         key=lambda c: (rank.get(c.priority, 9), -c.amount_paise),
     )
 
+    #: The cap is a page-size guard, not a filter. Returning the true matched
+    #: count alongside it is what lets the dashboard say "showing 400 of N"
+    #: rather than quietly presenting a slice as the whole queue.
     return {
         "summary": summary,
+        "total": len(shown),
         "items": [
             {
                 "case_key": c.case_key,

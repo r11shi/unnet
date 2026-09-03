@@ -452,6 +452,38 @@ def cmd_agent(args) -> int:
         "hypothesis, because a bank charge appears in no table we hold. "
         "Arithmetic is not provenance.[/dim]"
     )
+
+    # ---------------------------------------------------------------- #
+    # What is guaranteed, and where the guarantee is checked.
+    # ---------------------------------------------------------------- #
+    console.print()
+    console.print("[bold]Safety properties, and the tests that hold them[/bold]")
+    guarantees = Table(header_style="bold")
+    guarantees.add_column("Property")
+    guarantees.add_column("Held by")
+    for prop, where in (
+        ("Two explanations that both sum exactly → neither is posted",
+         "tests/test_ambiguity.py"),
+        ("A component in no ledger row → hypothesis, never a closure",
+         "tests/test_verifier.py"),
+        ("A malformed or unreadable model reply → abstention, run continues",
+         "tests/test_malformed_model_output.py"),
+        ("A provider outage → not_attempted, never a resolution",
+         "tests/test_malformed_model_output.py"),
+        ("Payer-controlled narration → fenced, and quoted in drafts",
+         "tests/test_injection.py"),
+        ("A model's SQL → single read-only SELECT, allow-listed tables",
+         "tests/test_sql_guard.py"),
+    ):
+        guarantees.add_row(prop, where)
+    console.print(guarantees)
+    console.print(
+        "[dim]The ambiguity case is constructed against the real engine rather "
+        "than drawn from the fixtures: on 21 payouts only one credit and one "
+        "payout survive to the resolver, so no rival explanation exists to "
+        "find. An untriggered guard and an absent guard look identical in a "
+        "metrics table, which is why it is asserted instead of counted.[/dim]"
+    )
     return 0
 
 

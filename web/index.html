@@ -234,9 +234,39 @@ const VIEWS = [
   ["ask",       "✦", "Ask"],
 ];
 
-const S = { view:"overview", caseKey:null, summary:null, waterfall:null, batch:0, cache:{} };
+const S = { view:"overview", caseKey:null, summary:null, waterfall:null, batch:0, cache:{},
+            token:(() => { try { return sessionStorage.getItem("unnet_token") || ""; }
+                           catch { return ""; } })() };
 
-const api = async (p,o) => (await fetch(p,o)).json();
+class ApiError extends Error {
+  constructor(status, detail) {
+    super(detail || `Request failed (${status})`);
+    this.status = status;
+  }
+}
+
+// `fetch` resolves for 404 and 500, and FastAPI answers both with valid JSON,
+// so a helper that only calls .json() never rejects. Every catch block in this
+// file was therefore dead: a view would take the error body, dereference a
+// field it does not have, and either blank the page or print a raw
+// TypeError at the operator. Turning a non-2xx into a throw is what makes the
+// error handling that is already written actually run.
+const api = async (p, o) => {
+  let response;
+  try {
+    response = await fetch(p, o);
+  } catch (err) {
+    throw new ApiError(0, "Could not reach the server. Check the connection and retry.");
+  }
+  let body = null;
+  try { body = await response.json(); } catch { /* an error page with no JSON */ }
+  if (!response.ok) {
+    const detail = body && body.detail;
+    throw new ApiError(response.status,
+      typeof detail === "string" ? detail : null);
+  }
+  return body;
+};
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 function inr(paise, o={}) {
@@ -254,6 +284,12 @@ function inr(paise, o={}) {
 const pct = n => (n*100).toFixed(1)+"%";
 const day = t => t ? String(t).slice(0,10) : "\u2014";
 const ageText = d => d < 1 ? "today" : Math.round(d) + " days";
+// Matches printed "4,740 links" over 150 rows and Audit "5,166 entries" over
+// 400. In a reconciliation tool, misstating how much of the ledger is on
+// screen is its own kind of wrong number.
+const shownOf = (shown, total, noun) => shown < total
+  ? `<span class="soft">showing ${num(shown)} of ${num(total)} ${noun}</span>`
+  : `<span class="soft">${num(total)} ${noun}</span>`;
 const num = n => Number(n ?? 0).toLocaleString("en-IN");
 
 const STATUSES = [
@@ -415,7 +451,13 @@ async function viewCases() {
   h += `</select><label>Impact</label><select id="cImpact"><option value="">all</option>`;
   for (const k of Object.keys(IMPACTS))
     h += `<option value="${k}" ${q.impact===k?"selected":""}>${IMPACTS[k][0]}</option>`;
-  h += `</select><span class="soft">${num(items.length)} shown · ${num(sm.open_cases)} open</span></div>`;
+  // `items` is what survived the client-side search over what the server sent;
+  // `c.total` is what actually matched the filters. When the server capped the
+  // page, say so rather than letting a slice pass for the queue.
+  h += `</select><span class="soft">${num(items.length)} shown</span>`;
+  if (d.total > d.items.length)
+    h += `<span class="soft"> · server returned ${num(d.items.length)} of ${num(d.total)} matching</span>`;
+  h += `<span class="soft"> · ${num(sm.open_cases)} open</span></div>`;
 
   h += `<div class="panel"><div class="scroll"><table><thead><tr>
     <th>Priority</th><th>Case</th><th class="num">Amount</th><th>Issue</th>
@@ -534,11 +576,25 @@ async function viewCase() {
       </dl>
       <div class="soft" style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Draft message</div>
       <pre class="json" id="draft" style="white-space:pre-wrap;max-height:none">${esc(c.message)}</pre>
-      <div style="display:flex;gap:8px;margin-top:14px">
+      ${c.status==="resolved" ? "" : `
+        <div class="soft" style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;margin:14px 0 6px">What did you do?</div>
+        <input id="settleNote" placeholder="e.g. raised with HDFC, ref 88231"
+               style="width:100%" value="">`}
+      <div style="display:flex;gap:8px;margin-top:14px;align-items:center;flex-wrap:wrap">
         <button class="btn" id="copyDraft">Copy</button>
         ${c.status==="resolved"
           ? badge("Resolved","green")
           : `<button class="btn primary" id="settle">Mark settled</button>`}
+        <span id="settleMsg" class="soft"></span>
+      </div>
+      <div id="tokenRow" ${S.token ? "" : "hidden"} style="margin-top:12px">
+        <div class="soft" style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">
+          Operator token</div>
+        <input id="adminToken" type="password" placeholder="UNNET_ADMIN_TOKEN"
+               style="width:100%" value="${esc(S.token || "")}">
+        <div class="soft" style="margin-top:6px;font-size:11.5px">
+          Held for this browser tab only — never written to disk, never sent anywhere
+          but this API.</div>
       </div></div></div>`;
 
   h += `<div class="panel"><h3>History</h3><div class="body"><div class="trace">`;
@@ -558,7 +614,7 @@ async function viewCase() {
 
 // ---------- Runs ----------
 async function viewRuns() {
-  const d = await api("/api/runs");
+  const d = await api("/api/runs?limit=100");
   let h = `<div class="head"><div><h2>Runs</h2>
     <p>Change over time — whether the match rate is holding and whether the queue is
        draining. Breaks are what the engine raised; open cases are what is still
@@ -587,7 +643,10 @@ async function viewRuns() {
       <td>${r.llm_degraded?badge("degraded","red"):r.llm_calls?badge(r.llm_calls+" calls","purple"):badge("rules only","gray")}</td>
     </tr>`;
   }
+  if (!d.items.length)
+    h += `<tr><td colspan="9"><div class="empty">No reconciliation has run yet.</div></td></tr>`;
   h += `</tbody></table></div></div>`;
+  if (!d.items.length) return h;
   h += `<div class="callout">The same break produces the same case identity every run, so a
         case settled by a human is not raised again — which is why breaks can hold at ${
         num(d.items[0]?.exceptions_open ?? 0)} while open cases fall. Ageing runs from the date the
@@ -675,7 +734,7 @@ async function viewMatches() {
     <option value="rule" ${q.decided_by==="rule"?"selected":""}>rule</option>
     <option value="model" ${q.decided_by==="model"?"selected":""}>model</option>
     </select><input id="fQ" placeholder="search an id…" value="${esc(q.q||"")}" style="width:220px">
-    <span class="soft">${num(d.total)} links</span></div>`;
+    ${shownOf(d.items.length, d.total, "links")}</div>`;
   h += `<div class="panel"><div class="scroll"><table><thead><tr>
     <th>Rule</th><th>By</th><th class="num">Conf</th><th>Left</th><th>Right</th><th class="num">Amount</th><th>Evidence</th>
     </tr></thead><tbody>`;
@@ -738,7 +797,7 @@ async function viewAudit() {
     <option value="rule" ${q.decided_by==="rule"?"selected":""}>rule</option>
     <option value="model" ${q.decided_by==="model"?"selected":""}>model</option>
     <option value="human" ${q.decided_by==="human"?"selected":""}>human</option>
-    </select><span class="soft">${num(d.total)} entries</span></div>`;
+    </select>${shownOf(d.items.length, d.total, "entries")}</div>`;
   h += `<div class="panel"><div class="scroll"><table><thead><tr>
     <th class="num">#</th><th>Stage</th><th>Subject</th><th>Decision</th><th>By</th><th>Decider</th><th>Verifier</th>
     </tr></thead><tbody>`;
@@ -749,6 +808,8 @@ async function viewAudit() {
       <td class="mono soft" style="max-width:200px;overflow:hidden;text-overflow:ellipsis">${esc(a.decider_ref)}</td>
       <td class="mono">${esc(a.verifier_result||"—")}</td></tr>`;
   }
+  if (!d.items.length)
+    h += `<tr><td colspan="7"><div class="empty">Nothing recorded for these filters.</div></td></tr>`;
   h += `</tbody></table></div></div>`;
   return h;
 }
@@ -824,13 +885,59 @@ function bind() {
     const b=document.getElementById("copyDraft"); b.textContent="Copied"; setTimeout(()=>b.textContent="Copy",1400);
   });
   on("settle","click",async()=>{
-    const b=document.getElementById("settle"); b.disabled=true; b.textContent="Settling…";
-    const r=await fetch(`/api/cases/${S.caseKey}/resolve`,{method:"POST",
-      headers:{"Content-Type":"application/json"},body:JSON.stringify({note:"Settled from the dashboard"})});
-    if(!r.ok){b.disabled=false;b.textContent="Settle refused";
-      b.insertAdjacentHTML("afterend",`<span class="soft" style="margin-left:8px">${r.status===401?"a bearer token is required":"read-only deployment"}</span>`);return;}
+    const b=document.getElementById("settle");
+    const msg=document.getElementById("settleMsg");
+    const tokenRow=document.getElementById("tokenRow");
+    const tokenInput=document.getElementById("adminToken");
+    // Replace the message each time. Appending it, as this did, meant a second
+    // failed click left two contradictory explanations side by side.
+    const say = t => { if (msg) msg.textContent = t; };
+
+    b.disabled=true; b.textContent="Settling…"; say("");
+    const note=(document.getElementById("settleNote")||{}).value || "";
+    const headers={"Content-Type":"application/json"};
+    // A deployment with UNNET_ADMIN_TOKEN set refuses every write without this
+    // header. The dashboard used to send none at all, so on any secured
+    // deployment "Mark settled" could not succeed — the one action the whole
+    // loop depends on.
+    if (S.token) headers["Authorization"] = `Bearer ${S.token}`;
+
+    let r;
+    try {
+      r = await fetch(`/api/cases/${S.caseKey}/resolve`, {
+        method:"POST", headers,
+        body: JSON.stringify({note: note.trim() || "Settled from the dashboard"}),
+      });
+    } catch {
+      b.disabled=false; b.textContent="Mark settled";
+      say("Could not reach the server."); return;
+    }
+
+    if (r.status === 401) {
+      b.disabled=false; b.textContent="Mark settled";
+      if (tokenRow) tokenRow.hidden = false;
+      say(S.token ? "That token was not accepted." : "This deployment requires an operator token.");
+      if (tokenInput) tokenInput.focus();
+      return;
+    }
+    if (r.status === 503) {
+      b.disabled=false; b.textContent="Mark settled";
+      say("This deployment is read-only: no operator token is configured on the server.");
+      return;
+    }
+    if (!r.ok) {
+      b.disabled=false; b.textContent="Mark settled";
+      say(`Settle failed (${r.status}).`); return;
+    }
     // The button that had focus no longer exists after the re-render.
     render(true);
+  });
+  // Remember the token for this tab only. sessionStorage dies with the tab and
+  // never touches disk; a finance operator should not have a bearer token
+  // sitting in localStorage on a shared machine.
+  on("adminToken","input",e=>{
+    S.token = e.target.value.trim();
+    try { sessionStorage.setItem("unnet_token", S.token); } catch {}
   });
 
   const ask=async text=>{
@@ -857,7 +964,13 @@ async function render(moveFocus) {
 
   const main=document.getElementById("main");
   try { main.innerHTML = await RENDER[S.view](); bind(); }
-  catch(err){ main.innerHTML = `<div class="empty">${esc(err.message||err)}</div>`; }
+  catch(err){
+    main.innerHTML = `<div class="empty">This view could not load.<br>
+      <span class="soft">${esc(err.message || err)}</span><br>
+      <button class="btn" style="margin-top:12px" id="retryView">Retry</button></div>`;
+    const retry = document.getElementById("retryView");
+    if (retry) retry.addEventListener("click", () => render());
+  }
 
   // Swapping innerHTML leaves a screen reader parked where the old view was.
   // Moving focus to the new heading is the standard fix and also gives a
@@ -868,8 +981,18 @@ async function render(moveFocus) {
 
 (async function boot(){
   try { S.summary = await api("/api/summary"); }
-  catch { document.getElementById("main").innerHTML =
-      `<div class="empty">No run yet. Run <span class="mono">make recon</span>, then reload.</div>`; return; }
+  catch (err) {
+    // A 404 genuinely means no reconciliation has been run. A 500, a timeout
+    // or a dropped connection means something is wrong, and telling an
+    // operator to run `make recon` in that case sends them somewhere useless.
+    document.getElementById("main").innerHTML = err.status === 404
+      ? `<div class="empty">No reconciliation has run yet. Run
+           <span class="mono">make recon</span>, then reload.</div>`
+      : `<div class="empty">${esc(err.message)}<br>
+           <button class="btn" style="margin-top:12px"
+             onclick="location.reload()">Retry</button></div>`;
+    return;
+  }
   try { S.cache.openCases = (await api("/api/cases")).summary.open_cases; } catch {}
   const r=S.summary.run;
   document.getElementById("foot").innerHTML =
