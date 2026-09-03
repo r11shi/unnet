@@ -134,3 +134,67 @@ class AuditLog:
         )
         self.session.add(entry)
         return entry
+
+
+#: Tables whose rows belong to one reconciliation and can be dropped with it.
+#: `case_file` and `case_event` are deliberately absent: a case outlives the run
+#: that raised it — that is the entire point of a stable `case_key` — and its
+#: history is the record of what a human did. Pruning those would delete the
+#: loop this system exists to close.
+RUN_SCOPED_TABLES = (
+    "recon_audit",
+    "match",
+    "recon_exception",
+    "merchant_order",
+    "settlement_line",
+    "settlement_batch",
+    "bank_txn",
+)
+
+
+def prune_runs(engine, *, keep: int = 10) -> dict[str, int]:
+    """Keep the newest `keep` runs and delete the rows belonging to older ones.
+
+    Every reconciliation re-reads the source files and writes the whole dataset
+    again, because a historical run view has to be reproducible from what that
+    run actually saw. That is defensible; growing forever is not. Three runs
+    over a 1,516-order fixture already left 4,548 order rows and 5,166 audit
+    entries, and a nightly job would add that much every night.
+
+    Deletion is by `run_id`, so a run is removed whole or not at all — a
+    half-pruned run would show a match count that its own rows cannot support.
+    Returns the row count removed per table.
+    """
+    from sqlalchemy import text
+
+    from unnet.core.models import Run
+
+    with Session(engine) as session:
+        run_ids = [
+            r.run_id
+            for r in session.exec(
+                select(Run).order_by(Run.started_at.desc())
+            ).all()
+        ]
+
+    doomed = run_ids[keep:]
+    removed: dict[str, int] = {}
+    if not doomed:
+        return removed
+
+    with engine.begin() as connection:
+        for table in RUN_SCOPED_TABLES + ("run",):
+            total = 0
+            # Chunked so the parameter list cannot outgrow SQLite's limit on a
+            # database that has been left unpruned for a long time.
+            for start in range(0, len(doomed), 100):
+                chunk = doomed[start : start + 100]
+                marks = ",".join(f":r{i}" for i in range(len(chunk)))
+                result = connection.execute(
+                    text(f'DELETE FROM "{table}" WHERE run_id IN ({marks})'),
+                    {f"r{i}": value for i, value in enumerate(chunk)},
+                )
+                total += result.rowcount or 0
+            if total:
+                removed[table] = total
+    return removed

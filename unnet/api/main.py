@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
-from unnet.api.auth import require_write, writes_enabled
+from unnet.api.auth import require_write, writes_enabled, storage_is_durable
 from unnet.core.db import AuditLog, make_engine
 from unnet.core.models import (
     AuditEntry,
@@ -740,6 +740,10 @@ def ready():
 
     checks["cassettes"] = CassetteStore().count()
     checks["writes_enabled"] = writes_enabled()
+    # Reported, not inferred: whether a settled case survives a restart is a
+    # property of the deployment, and an operator is entitled to know it before
+    # they trust the queue.
+    checks["storage_durable"] = storage_is_durable()
     ok = checks["database"] and checks["run_present"]
     if not ok:
         raise HTTPException(503, detail=checks)

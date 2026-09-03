@@ -73,3 +73,19 @@ def require_write(authorization: str | None = Header(default=None)) -> str:
             headers={"WWW-Authenticate": "Bearer"},
         )
     return "operator"
+
+
+def storage_is_durable() -> bool:
+    """Whether a write made here survives the instance restarting.
+
+    Render's free tier attaches no disk, so `data/unnet.db` lives in the
+    container layer: the service spins down after inactivity and every settled
+    case reverts. "A settled case stays settled" is this system's central
+    claim, and on that deployment it holds only until the dyno sleeps.
+
+    A finance tool that loses writes silently is worse than one that says so,
+    which is the whole reason this is a declared fact rather than a guess.
+    Default is durable — a local run on a real filesystem is — and a deployment
+    without a disk sets UNNET_STORAGE=ephemeral.
+    """
+    return os.environ.get("UNNET_STORAGE", "durable").strip().lower() != "ephemeral"

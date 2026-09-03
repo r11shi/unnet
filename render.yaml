@@ -24,3 +24,10 @@ services:
         value: production
       - key: UNNET_ADMIN_TOKEN
         sync: false          # set in the dashboard; never committed
+      # Render's free tier attaches no disk, so data/unnet.db lives in the
+      # container layer and a settled case reverts when the instance spins
+      # down. Declaring it makes /api/ready report storage_durable: false and
+      # the dashboard footer say so, instead of the loop quietly reopening.
+      # Attach a disk and set this to `durable` for a real deployment.
+      - key: UNNET_STORAGE
+        value: ephemeral

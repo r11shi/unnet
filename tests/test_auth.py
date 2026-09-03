@@ -95,3 +95,39 @@ def test_readiness_fails_when_there_is_no_run_to_serve(client):
     assert response.status_code == 503
     assert response.json()["detail"]["database"] is True
     assert response.json()["detail"]["run_present"] is False
+
+
+# --------------------------------------------------------------------------- #
+# Whether a write survives a restart is a property of the deployment, and an
+# operator settling cases is entitled to know it before they start.
+# --------------------------------------------------------------------------- #
+
+
+def test_storage_is_assumed_durable_unless_a_deployment_says_otherwise(monkeypatch):
+    from unnet.api.auth import storage_is_durable
+
+    monkeypatch.delenv("UNNET_STORAGE", raising=False)
+    assert storage_is_durable() is True
+
+
+def test_a_deployment_with_no_disk_can_declare_itself_ephemeral(monkeypatch):
+    """Render's free tier attaches none, so every settled case reverts on
+    restart. A finance tool that loses writes silently is worse than one that
+    says so."""
+    from unnet.api.auth import storage_is_durable
+
+    monkeypatch.setenv("UNNET_STORAGE", "ephemeral")
+    assert storage_is_durable() is False
+    monkeypatch.setenv("UNNET_STORAGE", "  EPHEMERAL  ")
+    assert storage_is_durable() is False
+
+
+def test_readiness_reports_storage_durability(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+
+    from unnet.api.main import app
+
+    monkeypatch.setenv("UNNET_STORAGE", "ephemeral")
+    body = TestClient(app, raise_server_exceptions=False).get("/api/ready").json()
+    payload = body.get("detail", body)
+    assert payload["storage_durable"] is False

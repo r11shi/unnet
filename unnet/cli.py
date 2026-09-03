@@ -19,7 +19,13 @@ from pathlib import Path
 from rich.console import Console
 from rich.table import Table
 
-from unnet.core.db import AuditLog, make_engine, session_scope
+from unnet.core.db import (
+    DEFAULT_DB_PATH,
+    AuditLog,
+    make_engine,
+    prune_runs,
+    session_scope,
+)
 from unnet.engine import casefile
 from unnet.core.models import ExceptionStatus
 from unnet.core.money import format_inr
@@ -104,6 +110,18 @@ def _run(args, *, ai_enabled: bool, label: str, data: str | None = None,
         )
         _persist(session, result)
         casefile.persist(session, result.cases, run_id, previous)
+
+    # Retention runs after the commit, so a failed reconciliation never costs
+    # history it did not replace.
+    keep = getattr(args, "keep_runs", 0)
+    if keep:
+        removed = prune_runs(engine, keep=keep)
+        if removed:
+            total = sum(removed.values())
+            console.print(
+                f"[dim]Pruned {total:,} rows from runs older than the last "
+                f"{keep}.[/dim]"
+            )
 
     return result, client
 
@@ -599,10 +617,17 @@ def cmd_serve(args) -> int:
     return 0
 
 
-def main(argv: list[str] | None = None) -> int:
+def build_parser() -> argparse.ArgumentParser:
+    """The CLI's argument parser, built separately so it can be inspected."""
     parser = argparse.ArgumentParser(prog="unnet", description=__doc__)
     parser.add_argument("--data", default="data/synthetic", help="fixture directory")
-    parser.add_argument("--db", default="data/unnet.db", help="SQLite path")
+    # Defaulting to the literal path meant `UNNET_DB=/data/x unnet recon` wrote
+    # to data/unnet.db while `unnet serve` — which builds its engine from
+    # DEFAULT_DB_PATH — read /data/x. Two commands, two databases, no error.
+    parser.add_argument(
+        "--db", default=str(DEFAULT_DB_PATH),
+        help="SQLite path (defaults to $UNNET_DB, else data/unnet.db)",
+    )
     parser.add_argument(
         "--provider",
         default=None,
@@ -624,6 +649,10 @@ def main(argv: list[str] | None = None) -> int:
     gen.set_defaults(func=cmd_gen)
 
     recon = sub.add_parser("recon", help="run one reconciliation")
+    recon.add_argument(
+        "--keep-runs", type=int, default=10,
+        help="delete rows belonging to runs older than the newest N (0 = keep all)",
+    )
     recon.add_argument("--rules-only", action="store_true")
     recon.add_argument("--label", default="")
     recon.set_defaults(func=cmd_recon)
@@ -659,7 +688,11 @@ def main(argv: list[str] | None = None) -> int:
     serve.add_argument("--reload", action="store_true")
     serve.set_defaults(func=cmd_serve)
 
-    args = parser.parse_args(argv)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
     return args.func(args)
 
 

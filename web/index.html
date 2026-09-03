@@ -168,6 +168,9 @@ input:focus,select:focus{outline:2px solid var(--blue-a16);border-color:var(--bl
 .filters{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
 .filters label{color:var(--text-soft);font-size:11px;text-transform:uppercase;letter-spacing:.05em;font-weight:500}
 
+tr.grouphead > td{background:var(--bg-weak);border-top:1px solid var(--stroke-soft);
+  padding-top:11px;padding-bottom:11px;cursor:pointer}
+tr.grouphead:focus-visible > td{outline:2px solid var(--blue);outline-offset:-2px}
 .bar{height:6px;background:var(--gray-200);border-radius:var(--r-pill);overflow:hidden}
 .bar>i{display:block;height:100%;border-radius:var(--r-pill);background:var(--blue)}
 .empty{color:var(--text-soft);padding:36px;text-align:center;font-size:13.5px}
@@ -460,22 +463,57 @@ async function viewCases() {
   h += `<span class="soft"> · ${num(sm.open_cases)} open</span></div>`;
 
   h += `<div class="panel"><div class="scroll"><table><thead><tr>
-    <th>Priority</th><th>Case</th><th class="num">Amount</th><th>Issue</th>
-    <th>Owner</th><th>Status</th><th>Age</th><th></th></tr></thead><tbody>`;
+    <th>Priority</th><th>Case</th><th class="num">Amount</th><th>Ageing</th>
+    <th></th><th>Status</th><th>Age</th><th></th></tr></thead><tbody>`;
+
+  // 130 rows is not 130 pieces of work. Grouped by who owns them and what is
+  // wrong, they are eleven conversations: one chase with Razorpay risk covering
+  // 41 held payments, one ledger correction covering 16 duplicates. A flat list
+  // makes an operator rediscover that every morning.
+  const groups = [];
+  const byKey = new Map();
   for (const i of items) {
-    h += `<tr class="click" tabindex="0" role="link" data-case="${esc(i.case_key)}">
-      <td>${badge(i.priority, PRIO_TONE[i.priority]||"gray")}</td>
-      <td class="mono">${esc(i.subject_id)}${i.hypothesis?`<div>${badge("hypothesis","purple")}</div>`:""}</td>
-      <td class="num" style="font-weight:600">${esc(i.amount_display)}</td>
-      <td><div style="font-weight:500">${esc(i.action)}</div>
-          <div class="mono soft">${esc(i.code)}</div></td>
-      <td class="muted">${esc(i.owner)}</td>
-      <td>${statusBadge(i.status)}</td>
-      <td class="muted">${i.age_days<1?"today":i.age_days.toFixed(0)+"d"}</td>
-      <td class="soft">›</td></tr>`;
+    const key = i.owner + "|" + i.code;
+    let g = byKey.get(key);
+    if (!g) { g = {owner:i.owner, code:i.code, action:i.action, rows:[], paise:0}; byKey.set(key,g); groups.push(g); }
+    g.rows.push(i);
+    g.paise += i.amount_paise || 0;
   }
-  if (!items.length) h += `<tr><td colspan="8"><div class="empty">Nothing outstanding here.</div></td></tr>`;
-  h += `</tbody></table></div></div>`;
+  const rank = {P1:0, P2:1, P3:2};
+  groups.sort((a,b) => (rank[a.rows[0].priority] ?? 9) - (rank[b.rows[0].priority] ?? 9) || b.paise - a.paise);
+
+  for (const g of groups) {
+    const collapsed = S.cache.closedGroups && S.cache.closedGroups[g.owner+"|"+g.code];
+    h += `<tr class="grouphead" data-group="${esc(g.owner+"|"+g.code)}" tabindex="0">
+      <td colspan="3"><span class="soft" style="margin-right:8px">${collapsed?"▸":"▾"}</span>
+        <b>${esc(g.owner)}</b> <span class="soft">·</span> <span class="mono">${esc(g.code)}</span></td>
+      <td colspan="3" class="muted">${esc(g.action)}</td>
+      <td colspan="2" class="num"><b>${esc(inr(g.paise))}</b>
+        <span class="soft"> · ${num(g.rows.length)} case${g.rows.length===1?"":"s"}</span></td></tr>`;
+    if (collapsed) continue;
+    for (const i of g.rows) {
+      h += `<tr class="click" tabindex="0" role="link" data-case="${esc(i.case_key)}">
+        <td>${badge(i.priority, PRIO_TONE[i.priority]||"gray")}</td>
+        <td class="mono">${esc(i.subject_id)}${i.hypothesis?`<div>${badge("hypothesis","purple")}</div>`:""}</td>
+        <td class="num" style="font-weight:600">${esc(i.amount_display)}</td>
+        <td class="soft">${esc(i.ageing_bucket || "")}</td>
+        <td></td>
+        <td>${statusBadge(i.status)}</td>
+        <td class="muted">${i.age_days<1?"today":i.age_days.toFixed(0)+"d"}</td>
+        <td class="soft">›</td></tr>`;
+    }
+  }
+  if (!items.length)
+    h += `<tr><td colspan="8"><div class="empty">${
+      (q.owner||q.impact||q.status||q.text)
+        ? "No cases match these filters."
+        : "Nothing outstanding here."}</div></td></tr>`;
+  h += `</tbody></table></div>`;
+  if (groups.length)
+    h += `<div class="body" style="border-top:1px solid var(--stroke-soft)">
+      <span class="soft">${num(items.length)} cases, ${num(groups.length)}
+      conversation${groups.length===1?"":"s"} — one counterparty and one problem each.</span></div>`;
+  h += `</div>`;
   return h;
 }
 
@@ -849,6 +887,18 @@ const RENDER = {overview:viewOverview, cases:viewCases, case:viewCase, runs:view
 function bind() {
   const on=(id,ev,fn)=>{const n=document.getElementById(id); if(n) n.addEventListener(ev,fn);};
 
+  document.querySelectorAll("[data-group]").forEach(el => {
+    const toggle = () => {
+      S.cache.closedGroups = S.cache.closedGroups || {};
+      const key = el.getAttribute("data-group");
+      S.cache.closedGroups[key] = !S.cache.closedGroups[key];
+      render();
+    };
+    el.addEventListener("click", toggle);
+    el.addEventListener("keydown", e => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); }
+    });
+  });
   document.querySelectorAll("[data-case]").forEach(el => {
     const open = () => { S.caseKey = el.getAttribute("data-case"); S.view="case"; render(true); };
     el.addEventListener("click", open);
@@ -995,8 +1045,15 @@ async function render(moveFocus) {
   }
   try { S.cache.openCases = (await api("/api/cases")).summary.open_cases; } catch {}
   const r=S.summary.run;
+  let ready = null;
+  try { ready = await api("/api/ready"); } catch (err) { /* 503 carries a dict */ }
   document.getElementById("foot").innerHTML =
-    `run ${esc(r.run_id.slice(0,10))}<br>${num(r.orders_count)} orders<br>${num(r.settlement_lines_count)} lines<br>${num(r.bank_txns_count)} bank rows`;
+    `run ${esc(r.run_id.slice(0,10))}<br>${num(r.orders_count)} orders<br>${num(r.settlement_lines_count)} lines<br>${num(r.bank_txns_count)} bank rows`
+    // An operator settling cases is entitled to know before they start that
+    // this instance forgets. Silence here would be the dishonest option.
+    + (ready && ready.storage_durable === false
+        ? `<div style="margin-top:8px;color:var(--orange-ink)">Demo instance:
+             settled cases reset when it restarts.</div>` : "");
   render();
 })();
 </script>

@@ -251,6 +251,23 @@ image runs `gen` and `recon` at build time, so the container starts with a
 completed run to show, and the model layer replays committed cassettes — no
 secrets, no network egress, no API key.
 
+### Deploying it for real
+
+The free-tier Render service attaches no disk, so the database lives in the
+container layer and **every settled case reverts when the instance spins
+down**. That is declared rather than discovered: `UNNET_STORAGE=ephemeral` in
+`render.yaml` makes `/api/ready` report `storage_durable: false` and the
+dashboard footer say *"Demo instance: settled cases reset when it restarts."*
+A real deployment attaches a disk and sets `durable`. A finance tool that
+loses writes silently is worse than one that says so.
+
+Retention is likewise explicit. Each run re-reads and re-stores the whole
+source dataset so a historical run view is reproducible from what that run
+actually saw — which is right, and unbounded. `unnet recon --keep-runs N`
+(default 10) drops the rows of older runs. Cases and their history are never
+pruned: a case outlives the run that raised it, which is the entire point of a
+stable `case_key`.
+
 > `docker build .` has not been run here: this environment's egress policy
 > refuses Docker Hub's blob CDN (`production.cloudfront.docker.com` answers
 > 403), so the `python:3.11-slim` base layer cannot be pulled. Every command in
