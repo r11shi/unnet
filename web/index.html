@@ -131,8 +131,24 @@ main{padding:28px 32px 72px;max-width:1560px;overflow-x:hidden}
 .panel .body{padding:18px}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
 .grid-detail{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(300px,.9fr);gap:18px;align-items:start}
-@media (max-width:1180px){.grid2,.grid-detail{grid-template-columns:1fr}
-  .shell{grid-template-columns:1fr}.side{display:none}}
+/* Below 1180px the sidebar becomes a top bar. It used to be `display:none`,
+   which left the product with no navigation at all on a 1024-wide laptop or any
+   windowed browser — including, reliably, a screen-share. Hiding the only way
+   to move between screens is not a responsive strategy. */
+@media (max-width:1180px){
+  .grid2,.grid-detail{grid-template-columns:1fr}
+  .shell{grid-template-columns:1fr}
+  .side{position:sticky;top:0;z-index:20;height:auto;flex-direction:row;
+    align-items:center;gap:8px;padding:10px 16px;overflow-x:auto;
+    border-right:none;border-bottom:1px solid var(--stroke-soft)}
+  .brand{padding:0 12px 0 0;border-bottom:none;border-right:1px solid var(--stroke-soft);flex:none}
+  .brand h1{font-size:15px}
+  .brand .tag{display:none}
+  nav{flex-direction:row;padding:0;gap:2px;flex:1}
+  nav button{white-space:nowrap;padding:7px 10px}
+  .side-foot{display:none}
+  main{padding:20px 16px 56px}
+}
 
 table{width:100%;border-collapse:collapse;font-size:13px}
 th{text-align:left;color:var(--text-soft);font-weight:500;font-size:11px;text-transform:uppercase;
@@ -343,6 +359,14 @@ tbody tr.grouphead:hover{background:var(--gray-200)}
    replacement, so the meaning does not rest on colour alone. */
 tbody tr.by-model > td:first-child{box-shadow:inset 3px 0 0 var(--purple)}
 tbody tr.by-human > td:first-child{box-shadow:inset 3px 0 0 var(--orange)}
+
+/* The active-tab marker for the top-bar layout. It lives here, after the
+   sidebar rule it overrides, because both selectors have the same specificity
+   and the later one wins — a media query does not raise specificity. */
+@media (max-width:1180px){
+  nav button.on::before{left:10px;right:10px;top:auto;bottom:-10px;
+    transform:none;width:auto;height:2px;border-radius:2px 2px 0 0}
+}
 </style>
 </head>
 <body>
