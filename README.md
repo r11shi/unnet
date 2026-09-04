@@ -5,6 +5,11 @@ order, routes what it cannot explain, and tracks it until it goes away.**
 
 Razorpay AI Buildathon 2026 · **AI Finance Controller** track
 
+**Live demo: [unnet.onrender.com](https://unnet.onrender.com/)** — read-only
+for anyone; settling a case needs the operator token (see
+[Who may write](#who-may-write)). Free tier, so the first request after a
+while sleeps for ~30s before it wakes up.
+
 ---
 
 ## The problem
@@ -217,6 +222,25 @@ and onto the case detail page. Provider errors are redacted where they are first
 turned into our own text, not at each of the four places they travel to, and
 `tests/test_secrets.py` holds that boundary.
 
+### Who may write
+
+Reading is public — the point of the deployed demo is that anyone can open it,
+walk a case, and see the agent trace with no setup. **Writing (settling a case)
+is not.** It requires a bearer token, checked with a constant-time comparison
+(`unnet/api/auth.py`), and with no token configured plus `UNNET_ENV=production`,
+writes are refused outright with a 503 rather than silently left open.
+
+```bash
+# Set once, in the Render dashboard → Environment (never in a committed file):
+UNNET_ADMIN_TOKEN=<a long random string you generate yourself>
+```
+
+On the dashboard, settling a case prompts for this token, which is held only in
+the browser tab's `sessionStorage` for that session — never written to disk,
+never sent anywhere but this API. **The token is not in this repository, in any
+commit, or anywhere in git history** — only its variable name is, by design,
+since this repo is public.
+
 ## Running it
 
 No API key, no network, no node. Python 3.11+.
@@ -348,6 +372,11 @@ bank_statement.csv  ─┘   schema     tiers 1-3  two-way    subset-sum   owner
                          mapping    (rules)    proof      then model   evidence,
                          + narration                      + VERIFIER   tracked
 ```
+
+Only 3 of 1,722 decisions in a typical run touch the model, and it closes
+nothing automatically — every close comes from the deterministic resolver,
+gated by a verifier that never trusts a proposal on its own. See
+[Where the AI is](#where-the-ai-is--and-where-it-deliberately-is-not) below.
 
 Detail in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Reasoning behind every
 significant choice, including the ones worth revisiting, in
