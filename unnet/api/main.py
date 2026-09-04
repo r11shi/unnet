@@ -10,12 +10,14 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
+from sqlalchemy import text
 from sqlmodel import Session, select
 
 from unnet.api.auth import require_write, writes_enabled, storage_is_durable
+from unnet.api import ratelimit
 from unnet.core.db import AuditLog, make_engine
 from unnet.core.models import (
     AuditEntry,
@@ -82,7 +84,28 @@ def list_runs(limit: int = Query(30, le=100)):
                 run.orders_count + run.settlement_lines_count + run.bank_txns_count
             )
             matched = run.matched_count
-            match_rate = matched / records if records else 0.0
+            # Links over records is not a match rate and must not be labelled
+            # one: a link consumes a record on each side, so the ratio tops out
+            # near 0.5 however perfect the run is. Reading 49.8% next to the
+            # scored 100.00% in METRICS.md is how a reviewer concludes one of
+            # the two numbers is invented.
+            #
+            # The honest per-run figure is coverage: of the records this run
+            # ingested, how many ended up in at least one link. It is countable
+            # from the run's own rows, it needs no ground truth, and it agrees
+            # with the value-reconciled share on the same run.
+            linked = session.exec(
+                text(
+                    "SELECT COUNT(*) FROM ("
+                    "  SELECT left_kind AS k, left_id AS i FROM match WHERE run_id = :r"
+                    "  UNION"
+                    "  SELECT right_kind AS k, right_id AS i FROM match WHERE run_id = :r"
+                    ")"
+                ),
+                params={"r": run.run_id},
+            ).one()
+            linked_records = int(linked[0])
+            coverage = linked_records / records if records else 0.0
 
             def delta(field: str, current):
                 if previous is None:
@@ -100,7 +123,8 @@ def list_runs(limit: int = Query(30, le=100)):
                     "records": records,
                     "matched_count": matched,
                     "matched_delta": delta("matched_count", matched),
-                    "match_rate": match_rate,
+                    "linked_records": linked_records,
+                    "coverage": coverage,
                     "exceptions_open": run.exceptions_open,
                     "exceptions_delta": delta("exceptions_open", run.exceptions_open),
                     "value_reconciled_paise": run.value_reconciled_paise,
@@ -461,12 +485,43 @@ class Question(BaseModel):
 
 
 @app.post("/api/ask")
-def ask(question: Question):
+def ask(question: Question, request: Request):
+    """Ask the run a question.
+
+    Public on purpose — a reviewer should be able to interrogate the deployment
+    without being handed a token first. Public *and* model-backed means the
+    endpoint spends a real API key on request, so it carries a budget: per-IP
+    limits refuse a loop, and a global daily cap on paid calls is what actually
+    protects the key. Over the daily cap the deterministic answers keep working;
+    see `unnet/api/ratelimit.py`.
+    """
     from unnet.agents.qa import answer
+
+    text = question.question.strip()
+    if not text:
+        raise HTTPException(422, "Ask a question.")
+    if len(text) > ratelimit.MAX_QUESTION_CHARS:
+        raise HTTPException(
+            413,
+            f"That question is {len(text)} characters; the limit is "
+            f"{ratelimit.MAX_QUESTION_CHARS}. Ask something shorter.",
+        )
+
+    retry_after = ratelimit.ask_limiter.check(ratelimit.client_key(request))
+    if retry_after is not None:
+        raise HTTPException(
+            429,
+            "Too many questions from this address. This is a shared demo with a "
+            f"capped model budget — try again in {retry_after}s.",
+            headers={"Retry-After": str(retry_after)},
+        )
 
     with _session() as session:
         rid = _resolve(session, question.run_id)
-        return answer(session, rid, question.question)
+        # Claimed before the call, not after: a budget checked afterwards is a
+        # budget that has already been spent.
+        allow_model = ratelimit.ask_limiter.take_model_call()
+        return answer(session, rid, text, allow_model=allow_model)
 
 
 @app.get("/api/cases")

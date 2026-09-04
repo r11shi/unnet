@@ -92,10 +92,27 @@ SQL_SCHEMA = {
 }
 
 
-def answer(session: Session, run_id: str, question: str) -> dict:
+def answer(
+    session: Session, run_id: str, question: str, *, allow_model: bool = True
+) -> dict:
+    """Answer a question about one run, cheapest path first.
+
+    `allow_model` is how the API hands down its spend budget. When it is False
+    the deterministic intents still answer — they cost nothing — and anything
+    else says so rather than silently returning a worse answer or an error.
+    """
     intent = _match_intent(session, run_id, question)
     if intent is not None:
         return intent
+    if not allow_model:
+        return _result(
+            "The natural-language path is paused: this demo caps how many model "
+            "calls it will make in a day, and today's budget is spent. Questions "
+            "about shortfalls, open exceptions, risk holds, chargebacks, fees and "
+            "totals are answered from the ledger directly and still work.",
+            [],
+            source="budget_exhausted",
+        )
     return _model_answer(session, run_id, question)
 
 
@@ -124,8 +141,16 @@ def _match_intent(session: Session, run_id: str, question: str) -> dict | None:
     return None
 
 
-def _result(answer_text: str, rows: list[dict], *, source: str, sql: str = "") -> dict:
-    return {"answer": answer_text, "rows": rows, "source": source, "sql": sql}
+def _result(
+    answer_text: str, rows: list[dict], *, source: str, sql: str = "", detail: str = ""
+) -> dict:
+    return {
+        "answer": answer_text,
+        "rows": rows,
+        "source": source,
+        "sql": sql,
+        "detail": detail,
+    }
 
 
 def _short_payouts(session: Session, run_id: str) -> dict:
@@ -300,12 +325,26 @@ def _model_answer(session: Session, run_id: str, question: str) -> dict:
     try:
         response = client.complete("qa_sql", prompt, SQL_SCHEMA)
     except LLMUnavailable as exc:
+        # Two different situations wear the same exception, and an operator
+        # needs to know which: nothing is configured (a setup problem, theirs
+        # to fix) versus a provider that is configured but not answering right
+        # now (transient, nothing to fix). Neither one should put a raw HTTP
+        # error in the answer line of a finance tool — that detail belongs in
+        # a field the interface can show on request.
+        configured = bool(client.backends)
+        headline = (
+            "The model is configured but did not answer just now — it happens on "
+            "the free tier under load. "
+            if configured
+            else "No model is configured for this deployment. "
+        )
         return _result(
-            "I can answer questions about short payouts, open exceptions, risk holds, "
-            "chargebacks, fees and totals without a model. Anything else needs one "
-            f"configured — set UNNET_LLM_PROVIDER. ({exc})",
+            headline + "Questions about short payouts, open exceptions, risk holds, "
+            "chargebacks, fees and totals are answered straight from the ledger and "
+            "still work.",
             [],
             source="unavailable",
+            detail=str(exc),
         )
 
     sql = str(response.data.get("sql", "")).strip().rstrip(";")

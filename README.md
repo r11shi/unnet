@@ -246,20 +246,66 @@ unnet recon                       # that case is settled and not re-raised
 
 ### Putting it behind a URL
 
-`Dockerfile` and `render.yaml` deploy the read-only demo to a free tier. The
-image runs `gen` and `recon` at build time, so the container starts with a
-completed run to show, and the model layer replays committed cassettes — no
-secrets, no network egress, no API key.
+`render.yaml` deploys the whole thing to Render's free tier as a **native
+Python service — no Docker**. There is nothing to containerise: the dashboard
+is one static file the API already serves, so the build is three commands and
+the start is one.
+
+```yaml
+buildCommand: pip install -e . && python -m unnet.cli gen &&
+              python -m unnet.cli gen --profile messy && python -m unnet.cli recon
+startCommand: python -m uvicorn unnet.api.main:app --host 0.0.0.0 --port $PORT
+healthCheckPath: /api/ready
+```
+
+Render runs the build on the same filesystem the service then serves from, so
+the instance starts with a completed run to show rather than an empty database.
+`/api/ready` returns 503 until that run exists, so the platform will not route
+traffic to an instance with nothing in it.
+
+Two secrets, both `sync: false` — declared in `render.yaml`, typed into the
+Render dashboard, never committed:
+
+| Variable | What it does |
+| --- | --- |
+| `UNNET_ADMIN_TOKEN` | Gates every write. With `UNNET_ENV=production` and no token, case actions return 503 rather than serving an unauthenticated mutation endpoint on a finance system. |
+| `GEMINI_API_KEY` | Powers Ask's natural-language path. Optional: without it the deterministic answers still work and the rest of the product is unaffected. |
+
+`Dockerfile` is kept as an alternative for anyone who wants a container, but it
+is not on the deploy path and nothing requires it.
+
+### A public endpoint that spends an API key
+
+`/api/ask` is deliberately unauthenticated — a reviewer should be able to
+interrogate the deployment without being handed a token. Public *and*
+model-backed means a URL that spends a real key on request, which is a URL that
+gets scripted, so it carries a budget (`unnet/api/ratelimit.py`):
+
+* **5 questions/minute and 40/hour per address**, which refuses a loop.
+* **150 model calls/day globally**, which is the limit that actually protects
+  the key — per-IP limits do not, because addresses are cheap.
+* **500 characters per question**, because a long prompt is a cost attack.
+
+Over the daily budget the endpoint does not fail: the deterministic intent
+answers cost nothing, stay unlimited, and keep answering. Every model answer
+also shows the SELECT it ran, so a number can be checked rather than trusted.
 
 ### Deploying it for real
 
-The free-tier Render service attaches no disk, so the database lives in the
-container layer and **every settled case reverts when the instance spins
-down**. That is declared rather than discovered: `UNNET_STORAGE=ephemeral` in
-`render.yaml` makes `/api/ready` report `storage_durable: false` and the
+The free-tier Render service attaches no disk, so the database lives on the
+instance filesystem and **every settled case reverts when the instance
+restarts**. That is declared rather than discovered: `UNNET_STORAGE=ephemeral`
+in `render.yaml` makes `/api/ready` report `storage_durable: false` and the
 dashboard footer say *"Demo instance: settled cases reset when it restarts."*
 A real deployment attaches a disk and sets `durable`. A finance tool that
 loses writes silently is worse than one that says so.
+
+The free tier also spins the instance down after about fifteen minutes idle,
+and the next request pays a cold start. The fix is an external uptime check
+(cron-job.org, UptimeRobot) hitting `/api/ready` every ten minutes — not a
+self-ping inside the app, which is both the host's problem to police and an
+obvious tell in a repository. One service awake continuously costs about 720 of
+the 750 free instance-hours a month, so it fits, for one service.
 
 Retention is likewise explicit. Each run re-reads and re-stores the whole
 source dataset so a historical run view is reproducible from what that run
@@ -268,13 +314,12 @@ actually saw — which is right, and unbounded. `unnet recon --keep-runs N`
 pruned: a case outlives the run that raised it, which is the entire point of a
 stable `case_key`.
 
-> `docker build .` has not been run here: this environment's egress policy
-> refuses Docker Hub's blob CDN (`production.cloudfront.docker.com` answers
-> 403), so the `python:3.11-slim` base layer cannot be pulled. Every command in
-> the Dockerfile is instead verified by running it against a clean clone of
-> this branch — `pip install -e .`, both `gen` profiles and `recon` all
-> succeed, and the run they produce matches the one in the repo. Expect to run
-> the build once yourself before trusting the image.
+> The native path above is verified end to end from a clean clone of this
+> branch: both `gen` profiles, `recon`, and the uvicorn start command all
+> succeed and serve. `docker build .` has *not* been run here — this
+> environment's egress policy refuses Docker Hub's blob CDN
+> (`production.cloudfront.docker.com` answers 403) — which is the other reason
+> the deploy does not depend on it.
 
 ### Running the agents
 

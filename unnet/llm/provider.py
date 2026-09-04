@@ -221,7 +221,7 @@ class LLMClient:
                     digest,
                     data,
                     {
-                        "model": backend.model,
+                        "model": getattr(backend, "last_model", None) or backend.model,
                         "backend": backend.name,
                         "task": task,
                         "latency_ms": latency_ms,
@@ -232,7 +232,7 @@ class LLMClient:
             return LLMResponse(
                 data=data,
                 source=backend.name,
-                model=backend.model,
+                model=getattr(backend, "last_model", None) or backend.model,
                 prompt_hash=digest,
                 latency_ms=latency_ms,
             )

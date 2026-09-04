@@ -24,40 +24,54 @@
    theirs.
 --------------------------------------------------------------------------- */
 :root {
-  --gray-0:#ffffff; --gray-50:#f7f7f7; --gray-100:#f5f5f5; --gray-200:#ebebeb;
-  --gray-300:#d1d1d1; --gray-400:#a3a3a3; --gray-500:#7b7b7b; --gray-600:#5c5c5c;
-  --gray-700:#333333; --gray-800:#262626; --gray-950:#171717;
+  /* The ramp is inverted against its Figma source: this is a dark console, so
+     `gray-0` is the deepest surface and `gray-950` the brightest text. Keeping
+     the *names* means every rule written against the light theme keeps meaning
+     what it meant — a hairline is still `--stroke-soft`, body copy is still
+     `--text-strong` — and the theme is one block rather than a rewrite.
 
-  --blue:#476cff;   --blue-a10:#476cff1a;   --blue-a16:#476cff29;
-  --green:#1fc16b;  --green-a10:#1fc16b1a;  --green-a16:#1fc16b29;
-  --red:#fb3748;    --red-a10:#fb37481a;    --red-a16:#fb374829;
-  --orange:#fa7319; --orange-a10:#fa73191a; --orange-a16:#fa731929;
-  --yellow:#fbc64b; --yellow-a10:#fbc64b1a;
-  --purple:#784def; --purple-a10:#784def1a; --purple-a16:#784def29;
-  --teal:#22d3bb;   --teal-a10:#22d3bb1a;
-  --slate-a10:#99a0ae1a; --slate-a16:#99a0ae29;
+     Dark because of what this screen is. An operator has it open all day next
+     to a bank portal, reading columns of figures; a luminous white field is
+     the wrong ground for that, and every serious trading and treasury console
+     landed on the same answer. */
+  --gray-0:#09090b;  --gray-50:#0c0c0f; --gray-100:#141417; --gray-200:#26262b;
+  --gray-300:#34343b; --gray-400:#52525b; --gray-500:#8c8c97; --gray-600:#a1a1aa;
+  --gray-700:#d4d4d8; --gray-800:#e8e8ea; --gray-950:#fafafa;
 
-  /* Each hue above is a *fill* colour — correct for a dot, a bar or a solid
-     button, and unreadable as text on its own 10% tint: #1fc16b on #e9f9f0
-     measures 2.17:1. These are the same hues dropped in HLS lightness until
-     they clear 4.5:1 both on their tint and on white, so a status badge is
-     legible rather than decorative. Hue and saturation are untouched. */
-  --blue-ink:#2d57ff; --green-ink:#147f47; --red-ink:#d80417;
-  --orange-ink:#b74c04; --purple-ink:#7447ee; --yellow-ink:#936803;
-  --teal-ink:#147f70;
+  --blue:#476cff;   --blue-a10:#476cff1f;   --blue-a16:#476cff33;
+  --green:#1fc16b;  --green-a10:#1fc16b1f;  --green-a16:#1fc16b33;
+  --red:#fb3748;    --red-a10:#fb37481f;    --red-a16:#fb374833;
+  --orange:#fa7319; --orange-a10:#fa73191f; --orange-a16:#fa731933;
+  --yellow:#fbc64b; --yellow-a10:#fbc64b1f;
+  --purple:#784def; --purple-a10:#784def1f; --purple-a16:#784def33;
+  --teal:#22d3bb;   --teal-a10:#22d3bb1f;
+  --slate-a10:#99a0ae1f; --slate-a16:#99a0ae33;
 
-  /* gray-400 measures 2.52:1 on white. It is the right token for a hairline,
-     the wrong one for a column header or a run id, both of which are text a
-     reader has to read. The three text roles sit at 950/700/600 instead, which
-     clear AA at 17.9, 12.6 and 6.7:1. */
-  --text-strong:var(--gray-950); --text-sub:var(--gray-700); --text-soft:var(--gray-600);
-  --bg-page:var(--gray-50); --bg-surface:var(--gray-0); --bg-weak:var(--gray-100);
+  /* Each hue above is a *fill* — right for a dot, a bar or a solid button, and
+     unreadable as text on a near-black ground: #476cff on #141417 measures
+     3.4:1. These are the same hues lifted in lightness until they clear 4.5:1
+     on the page, on the surface, and on their own 12% tint, so a status badge
+     is legible rather than decorative. Hue is untouched. */
+  --blue-ink:#8fa6ff; --green-ink:#4ade80; --red-ink:#fb7185;
+  --orange-ink:#fbbf24; --purple-ink:#b39dfb; --yellow-ink:#fbc64b;
+  --teal-ink:#2dd4bf;
+
+  /* Three text roles, measured on --bg-surface (#141417): 17.4, 8.9 and 5.5:1,
+     and re-checked on every ground they actually land on — the page, a raised
+     panel, and the tinted group-header row, where the weakest pair is 4.5:1.
+     gray-400 is a hairline colour, never a text colour — it measures 2.6:1 and
+     a run id is text a reader has to actually read. */
+  --text-strong:var(--gray-950); --text-sub:var(--gray-600); --text-soft:var(--gray-500);
+  --bg-page:var(--gray-0); --bg-surface:var(--gray-100); --bg-weak:#1b1b1f;
   --stroke-soft:var(--gray-200); --stroke-sub:var(--gray-300);
 
   --r:12px; --r-sm:8px; --r-pill:999px;
   --sans:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
   --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
-  --shadow:0 1px 2px rgba(23,23,23,.04), 0 1px 3px rgba(23,23,23,.03);
+  /* On a dark ground a drop shadow reads as grime. Elevation here is a
+     one-pixel lighter edge along the top of a surface, which is how a raised
+     panel actually catches light. */
+  --shadow:inset 0 1px 0 rgba(255,255,255,.03);
 }
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
@@ -131,14 +145,17 @@ tbody tr.click:hover{background:var(--bg-weak)}
 /* A row that opens a case is a control, so it has to be reachable and visibly
    focused. `all:unset` on the nav buttons had taken their default ring away
    with it, leaving the whole product keyboard-navigable but invisibly so. */
-tbody tr.click:focus-visible{outline:2px solid var(--blue);outline-offset:-2px}
-nav button:focus-visible{outline:2px solid var(--blue);outline-offset:-2px}
-.back:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
+tbody tr.click:focus-visible{outline:2px solid var(--blue-ink);outline-offset:-2px}
+nav button:focus-visible{outline:2px solid var(--blue-ink);outline-offset:-2px}
+.back:focus-visible{outline:2px solid var(--blue-ink);outline-offset:1px}
 .head h2:focus{outline:none}
 td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
 /* Settlement ids, UTRs and bank references have no spaces in them, so a narrow
    column has nowhere to break and the text escapes the cell. */
-.mono{font-family:var(--mono);font-size:12px;overflow-wrap:anywhere}
+.mono{font-family:var(--mono);font-size:12px;overflow-wrap:break-word}
+/* An identifier is a single token to a reader. Give the columns that carry
+   one enough room that the layout does not have to break it. */
+td.mono{min-width:14ch}
 .scroll{max-height:calc(100vh - 300px);min-height:240px;overflow:auto}
 
 /* Badge — Color x Size, mirroring the library's variant structure. */
@@ -158,19 +175,19 @@ button.btn{cursor:pointer;font-family:inherit;font-size:13px;font-weight:500;
   padding:7px 13px;border-radius:var(--r-sm);border:1px solid var(--stroke-sub);
   background:var(--bg-surface);color:var(--text-strong);transition:background .12s,border-color .12s}
 button.btn:hover{background:var(--bg-weak)}
-button.btn:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
-button.btn.primary{background:var(--gray-950);border-color:var(--gray-950);color:#fff}
+button.btn:focus-visible{outline:2px solid var(--blue-ink);outline-offset:1px}
+button.btn.primary{background:var(--gray-950);border-color:var(--gray-950);color:var(--gray-0);font-weight:600}
 button.btn.primary:hover{background:var(--gray-800)}
 button.btn:disabled{opacity:.45;cursor:not-allowed}
 input,select{background:var(--bg-surface);border:1px solid var(--stroke-sub);color:var(--text-strong);
   border-radius:var(--r-sm);padding:7px 11px;font-size:13px;font-family:inherit}
-input:focus,select:focus{outline:2px solid var(--blue-a16);border-color:var(--blue)}
+input:focus,select:focus{outline:2px solid var(--blue-ink);outline-offset:1px;border-color:var(--blue-ink)}
 .filters{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
 .filters label{color:var(--text-soft);font-size:11px;text-transform:uppercase;letter-spacing:.05em;font-weight:500}
 
 tr.grouphead > td{background:var(--bg-weak);border-top:1px solid var(--stroke-soft);
   padding-top:11px;padding-bottom:11px;cursor:pointer}
-tr.grouphead:focus-visible > td{outline:2px solid var(--blue);outline-offset:-2px}
+tr.grouphead:focus-visible > td{outline:2px solid var(--blue-ink);outline-offset:-2px}
 .bar{height:6px;background:var(--gray-200);border-radius:var(--r-pill);overflow:hidden}
 .bar>i{display:block;height:100%;border-radius:var(--r-pill);background:var(--blue)}
 .empty{color:var(--text-soft);padding:36px;text-align:center;font-size:13.5px}
@@ -211,30 +228,195 @@ details.ev summary{cursor:pointer;color:var(--text-soft);font-size:12px;margin-t
 .trace .node.bad::before{background:var(--red);border-color:var(--red)}
 .kv{display:grid;grid-template-columns:auto 1fr;gap:8px 18px;font-size:13px}
 .kv dt{color:var(--text-soft)} .kv dd{margin:0;font-weight:500}
+
+/* ---------------------------------------------------------------------------
+   Console layer
+   Everything below is what separates a page that shows finance data from a
+   console someone reads all day: figures that line up, headers that stay put,
+   a loading state that holds its shape, and no motion that isn't reporting a
+   state change.
+--------------------------------------------------------------------------- */
+
+/* Tells the browser to paint form controls, scrollbars and the canvas behind
+   the page dark too. Without it the gaps around the app flash white. */
+:root{color-scheme:dark}
+
+::selection{background:var(--blue-a16);color:var(--text-strong)}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--gray-300);border-radius:6px;
+  border:3px solid var(--bg-page)}
+::-webkit-scrollbar-thumb:hover{background:var(--gray-400)}
+*{scrollbar-width:thin;scrollbar-color:var(--gray-300) transparent}
+
+/* One ring, everywhere, and it never disappears — a keyboard operator has to
+   be able to see where they are on a screen that moves money. */
+:focus-visible{outline:2px solid var(--blue-ink);outline-offset:2px;border-radius:3px}
+
+/* Motion here reports a state change and nothing else. An interface that
+   animates for pleasure is an interface a finance team stops trusting. */
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms !important;transition-duration:.01ms !important}
+}
+
+/* ---------- figures ----------
+   Every number in the product is tabular and every identifier is monospace.
+   Proportional digits make a column of rupee amounts impossible to scan for
+   the outlier, which is the single thing an operator is scanning for. */
+.tile .v,.kv dd,.num,.mono,td.num,th.num,.count,.badge{font-variant-numeric:tabular-nums}
+td.num,th.num{font-family:var(--mono);font-size:12.5px;letter-spacing:-0.01em}
+
+/* ---------- icons ---------- */
+.ic{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;
+  stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+nav button .ic{opacity:.75}
+nav button.on .ic,nav button:hover .ic{opacity:1}
+
+/* ---------- navigation ----------
+   The active item carries a bar on its leading edge as well as a tint. Colour
+   alone is a weak signal at a glance and no signal at all to a reader who
+   cannot separate these hues. */
+nav button{position:relative}
+nav button.on::before{content:"";position:absolute;left:-8px;top:50%;
+  transform:translateY(-50%);width:3px;height:18px;border-radius:0 3px 3px 0;
+  background:var(--blue-ink)}
+nav button{transition:background 120ms ease,color 120ms ease}
+
+.brand h1{display:flex;align-items:center;gap:9px}
+.brand h1 .mark{width:22px;height:22px;border-radius:6px;background:var(--text-strong);
+  color:var(--bg-page);display:grid;place-items:center;font-size:13px;font-weight:700;
+  flex:none;letter-spacing:0}
+
+/* ---------- tables ----------
+   The header stays visible while the body scrolls. Losing the column labels
+   two hundred rows into a ledger is how a figure gets read into the wrong
+   column. */
+.scroll{position:relative}
+.scroll thead th{position:sticky;top:0;z-index:2;background:var(--bg-surface);
+  box-shadow:inset 0 -1px 0 var(--stroke-soft)}
+tbody tr{transition:background 90ms ease}
+tbody tr.click:hover{background:var(--bg-weak)}
+tbody tr.grouphead{background:var(--bg-weak)}
+tbody tr.grouphead:hover{background:var(--gray-200)}
+
+/* ---------- loading ----------
+   A skeleton keeps the layout at the size it will be, so the page does not
+   jump when the data lands. On a free-tier instance waking from sleep this is
+   the first thing a reviewer sees, and "Loading…" on an empty page reads as
+   broken. */
+@keyframes shimmer{0%{opacity:.45}50%{opacity:.8}100%{opacity:.45}}
+.skel{display:block;height:11px;border-radius:4px;background:var(--gray-200);
+  animation:shimmer 1.4s ease-in-out infinite}
+.skel.w40{width:40%} .skel.w60{width:60%} .skel.w25{width:25%}
+@media (prefers-reduced-motion:reduce){.skel{animation:none;opacity:.6}}
+
+/* ---------- states ---------- */
+.empty{color:var(--text-sub);padding:44px 24px;text-align:center;font-size:13.5px}
+.empty strong{display:block;color:var(--text-strong);font-size:15px;font-weight:600;
+  margin-bottom:6px;letter-spacing:-0.015em}
+.empty code{font-family:var(--mono);font-size:12px;background:var(--bg-weak);
+  border:1px solid var(--stroke-soft);border-radius:5px;padding:2px 6px;color:var(--text-strong)}
+
+/* A failure is a notice with a shape, not red text in the flow of the page. */
+.notice{display:flex;gap:11px;align-items:flex-start;padding:12px 14px;
+  border:1px solid var(--stroke-soft);border-left:3px solid var(--text-soft);
+  border-radius:var(--r-sm);background:var(--bg-surface);font-size:13px;
+  color:var(--text-sub);margin:0 0 14px}
+.notice .ic{margin-top:1px}
+.notice b{color:var(--text-strong);font-weight:600}
+.notice.bad{border-left-color:var(--red);background:var(--red-a10);color:var(--text-strong)}
+.notice.warn{border-left-color:var(--orange);background:var(--orange-a10);color:var(--text-strong)}
+.notice.good{border-left-color:var(--green);background:var(--green-a10);color:var(--text-strong)}
+
+/* ---------- density ----------
+   Uppercase micro-labels for anything that names a field rather than carrying
+   a value. It keeps the label out of the way of the number, which is what the
+   eye is here for. */
+.lbl{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;
+  color:var(--text-soft)}
+
+/* ---------- who decided ----------
+   Three of the seventeen hundred audit rows were decided by a model. A badge
+   in the fifth column is invisible while scrolling; a coloured leading edge is
+   not, and it is the question a reviewer is actually scanning this table for.
+   The badge stays — the edge is a second, redundant encoding, not a
+   replacement, so the meaning does not rest on colour alone. */
+tbody tr.by-model > td:first-child{box-shadow:inset 3px 0 0 var(--purple)}
+tbody tr.by-human > td:first-child{box-shadow:inset 3px 0 0 var(--orange)}
 </style>
 </head>
 <body>
+<!-- Icon sprite. Drawn on a 24px grid at 1.5px stroke with round caps and
+     joins, matching the Keyline house style; inlined rather than fetched
+     because the dashboard has to render with no network at all, and a finance
+     console should not blank its navigation because a CDN is slow. Each glyph
+     is decorative — every control it sits in also carries its own text — so
+     they are all aria-hidden at the point of use. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
+  <symbol id="i-overview" viewBox="0 0 24 24">
+    <rect x="3" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5"/>
+    <rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.5"/>
+  </symbol>
+  <symbol id="i-cases" viewBox="0 0 24 24">
+    <path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h3.2l1.8 2.2h8A2.5 2.5 0 0 1 21 9.7v7.8A2.5 2.5 0 0 1 18.5 20h-13A2.5 2.5 0 0 1 3 17.5z"/>
+  </symbol>
+  <symbol id="i-runs" viewBox="0 0 24 24">
+    <path d="M20.5 12a8.5 8.5 0 1 1-2.6-6.1"/><path d="M20.5 3.5v4.2h-4.2"/><path d="M12 7.6V12l3 1.8"/>
+  </symbol>
+  <symbol id="i-unnetting" viewBox="0 0 24 24">
+    <path d="M4 5h3.2c1.1 0 2.1.6 2.6 1.6l1.2 2.2"/><path d="M4 19h3.2c1.1 0 2.1-.6 2.6-1.6l4-7.6c.5-1 1.5-1.6 2.6-1.6H20"/>
+    <path d="M17 5.2 20 8.2 17 11.2"/><path d="M17 12.8 20 15.8 17 18.8"/><path d="M4 12h4"/>
+  </symbol>
+  <symbol id="i-matches" viewBox="0 0 24 24">
+    <path d="M4 8.5h13"/><path d="M13.8 5.3 17 8.5l-3.2 3.2"/>
+    <path d="M20 15.5H7"/><path d="M10.2 12.3 7 15.5l3.2 3.2"/>
+  </symbol>
+  <symbol id="i-audit" viewBox="0 0 24 24">
+    <path d="M13.5 3H6.5A1.5 1.5 0 0 0 5 4.5v15A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5V8.5z"/>
+    <path d="M13.5 3v4.2c0 .7.6 1.3 1.3 1.3H19"/><path d="M8.5 12.5h7"/><path d="M8.5 16.5h4.5"/>
+  </symbol>
+  <symbol id="i-ask" viewBox="0 0 24 24">
+    <path d="M12 3.2 13.7 8 18.5 9.7 13.7 11.4 12 16.2 10.3 11.4 5.5 9.7 10.3 8z"/>
+    <path d="M18 15.5l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z"/>
+  </symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24">
+    <path d="M12 3.8 21.2 19.4a1.4 1.4 0 0 1-1.2 2.1H4a1.4 1.4 0 0 1-1.2-2.1z"/>
+    <path d="M12 9.5v4.2"/><path d="M12 17.3h.01"/>
+  </symbol>
+  <symbol id="i-info" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="8.8"/><path d="M12 11.2v5"/><path d="M12 7.9h.01"/>
+  </symbol>
+  <symbol id="i-check" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="8.8"/><path d="M8.2 12.3l2.6 2.6 5-5.4"/>
+  </symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 5.5 8.5 12l6.5 6.5"/></symbol>
+</defs></svg>
 <div class="shell">
   <aside class="side">
     <div class="brand">
-      <h1>Unnet</h1>
+      <h1><span class="mark" aria-hidden="true">U</span>Unnet</h1>
       <div class="tag">Settlement reconciliation and exception workflow</div>
     </div>
     <nav id="nav"></nav>
     <div class="side-foot" id="foot"></div>
   </aside>
-  <main id="main"><div class="empty">Loading…</div></main>
+  <main id="main"><div class="tiles">
+    <div class="tile"><span class="skel w60"></span><div style="height:14px"></div><span class="skel w40"></span></div>
+    <div class="tile"><span class="skel w60"></span><div style="height:14px"></div><span class="skel w40"></span></div>
+    <div class="tile"><span class="skel w60"></span><div style="height:14px"></div><span class="skel w40"></span></div>
+    <div class="tile"><span class="skel w60"></span><div style="height:14px"></div><span class="skel w40"></span></div>
+  </div></main>
 </div>
 
 <script>
 const VIEWS = [
-  ["overview",  "◱", "Overview"],
-  ["cases",     "◈", "Cases"],
-  ["runs",      "⟳", "Runs"],
-  ["unnetting", "⌸", "Un-netting"],
-  ["matches",   "⇄", "Matches"],
-  ["audit",     "☰", "Audit"],
-  ["ask",       "✦", "Ask"],
+  ["overview",  "i-overview",  "Overview"],
+  ["cases",     "i-cases",     "Cases"],
+  ["runs",      "i-runs",      "Runs"],
+  ["unnetting", "i-unnetting", "Un-netting"],
+  ["matches",   "i-matches",   "Matches"],
+  ["audit",     "i-audit",     "Audit"],
+  ["ask",       "i-ask",       "Ask"],
 ];
 
 const S = { view:"overview", caseKey:null, summary:null, waterfall:null, batch:0, cache:{},
@@ -416,7 +598,7 @@ async function viewOverview() {
 
   h += `<div class="panel"><h3>Latest run <span class="note">${esc(latest.run_id||"")}</span></h3>
     <div class="body"><dl class="kv">
-      <dt>Match rate</dt><dd>${pct(latest.match_rate||0)}</dd>
+      <dt>Records linked</dt><dd>${pct(latest.coverage||0)} <span class="soft">(${num(latest.linked_records)} of ${num(latest.records)})</span></dd>
       <dt>Breaks raised</dt><dd>${num(latest.exceptions_open)} ${
         latest.exceptions_delta!=null?`<span class="soft">(${latest.exceptions_delta>=0?"+":""}${latest.exceptions_delta} vs previous)</span>`:""}</dd>
       <dt>Open cases</dt><dd>${num(latest.open_cases)} <span class="soft">(${
@@ -659,7 +841,7 @@ async function viewRuns() {
        outstanding after anything a human settled.</p></div></div>`;
 
   h += `<div class="panel"><div class="scroll"><table><thead><tr>
-    <th>Run</th><th class="num">Records</th><th class="num">Match rate</th>
+    <th>Run</th><th class="num">Records</th><th class="num">Records linked</th>
     <th class="num">Breaks raised</th><th class="num">Open cases</th><th class="num">Settled</th>
     <th class="num">In exceptions</th><th class="num">Duration</th><th>Model</th>
     </tr></thead><tbody>`;
@@ -672,7 +854,7 @@ async function viewRuns() {
     h += `<tr>
       <td class="mono">${esc(r.run_id.slice(0,10))}<div class="soft">${esc((r.started_at||"").toString().replace("T"," ").slice(0,16))}</div></td>
       <td class="num">${num(r.records)}</td>
-      <td class="num" style="font-weight:600">${pct(r.match_rate)}</td>
+      <td class="num" style="font-weight:600">${pct(r.coverage)}<div class="soft" style="font-weight:400">${num(r.linked_records)} linked</div></td>
       <td class="num">${num(r.exceptions_open)}<div>${delta(r.exceptions_delta,true)}</div></td>
       <td class="num">${num(r.open_cases)}</td>
       <td class="num">${num(r.resolved_cases)}</td>
@@ -840,7 +1022,7 @@ async function viewAudit() {
     <th class="num">#</th><th>Stage</th><th>Subject</th><th>Decision</th><th>By</th><th>Decider</th><th>Verifier</th>
     </tr></thead><tbody>`;
   for (const a of d.items) {
-    h += `<tr><td class="num soft">${a.seq}</td><td class="mono">${esc(a.stage)}</td>
+    h += `<tr class="by-${esc(a.decided_by)}"><td class="num soft">${a.seq}</td><td class="mono">${esc(a.stage)}</td>
       <td class="mono">${esc(a.subject_id)}</td><td>${esc(a.decision)}</td>
       <td>${badge(a.decided_by, a.decided_by==="model"?"purple":a.decided_by==="human"?"orange":"blue")}</td>
       <td class="mono soft" style="max-width:200px;overflow:hidden;text-overflow:ellipsis">${esc(a.decider_ref)}</td>
@@ -1007,7 +1189,7 @@ async function render(moveFocus) {
   document.getElementById("nav").innerHTML = VIEWS.map(([k,ic,label])=>
     `<button data-v="${k}" class="${S.view===k||(k==="cases"&&S.view==="case")?"on":""}"${
        S.view===k||(k==="cases"&&S.view==="case")?' aria-current="page"':""}>
-       <span class="ic" aria-hidden="true">${ic}</span>${label}${
+       <svg class="ic" aria-hidden="true"><use href="#${ic}"/></svg>${label}${
        k==="cases"&&openCount!=null?`<span class="count">${openCount}</span>`:""}</button>`).join("");
   document.querySelectorAll("[data-v]").forEach(b=>
     b.addEventListener("click",()=>{S.view=b.getAttribute("data-v");S.caseKey=null;render(true);}));

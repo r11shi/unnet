@@ -1,33 +1,50 @@
-# One-click deploy to Render's free tier.
+# One-click deploy to Render's free tier — native Python, no Docker.
 #
-# The demo builds its own fixtures and runs a full reconciliation at image-build
-# time, and the model layer replays committed cassettes rather than calling out,
-# so the service needs no secrets to *serve*.
+# The build regenerates the fixtures and runs one full reconciliation, so the
+# service starts with a completed run to show rather than an empty database.
+# Render runs `buildCommand` on the same filesystem the service then serves
+# from, which is the whole reason this needs no container.
 #
-# It does need one to *accept a write*. With UNNET_ENV=production and no
-# UNNET_ADMIN_TOKEN, case actions return 503 rather than silently exposing an
-# unauthenticated mutation endpoint on a finance system. Set the token in the
-# Render dashboard to enable settling cases on the live demo.
+# Two secrets are declared here and neither value is ever committed:
+#
+#   UNNET_ADMIN_TOKEN  gates every write. With UNNET_ENV=production and no
+#                      token, case actions return 503 rather than silently
+#                      exposing an unauthenticated mutation endpoint on a
+#                      finance system.
+#   GEMINI_API_KEY     powers Ask's natural-language path. /api/ask is public
+#                      by design — a judge should be able to ask the deployment
+#                      a question — so it is capped per IP and per day
+#                      (unnet/api/ratelimit.py) and degrades to the
+#                      deterministic intent answers rather than failing.
 services:
   - type: web
     name: unnet
-    runtime: docker
+    runtime: python
     plan: free
-    dockerfilePath: ./Dockerfile
+    buildCommand: >-
+      pip install -e . &&
+      python -m unnet.cli gen &&
+      python -m unnet.cli gen --profile messy &&
+      python -m unnet.cli recon
+    startCommand: python -m uvicorn unnet.api.main:app --host 0.0.0.0 --port $PORT
     # Readiness, not liveness: a process that is up but has no run to show
     # should not receive traffic.
     healthCheckPath: /api/ready
     envVars:
-      - key: UNNET_LLM_PROVIDER
-        value: offline
+      - key: PYTHON_VERSION
+        value: "3.11"
       - key: UNNET_ENV
         value: production
+      - key: UNNET_LLM_PROVIDER
+        value: gemini
+      - key: GEMINI_API_KEY
+        sync: false          # set in the dashboard; never committed
       - key: UNNET_ADMIN_TOKEN
         sync: false          # set in the dashboard; never committed
       # Render's free tier attaches no disk, so data/unnet.db lives in the
-      # container layer and a settled case reverts when the instance spins
-      # down. Declaring it makes /api/ready report storage_durable: false and
-      # the dashboard footer say so, instead of the loop quietly reopening.
+      # instance filesystem and a settled case reverts when the instance
+      # restarts. Declaring it makes /api/ready report storage_durable: false
+      # and the dashboard footer say so, instead of the loop quietly reopening.
       # Attach a disk and set this to `durable` for a real deployment.
       - key: UNNET_STORAGE
         value: ephemeral
